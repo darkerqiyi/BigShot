@@ -148,11 +148,20 @@ Complete arcade mission expansion completed 2026-07-15:
 
 Ground-roll, charged-grenade, and traversal-correction pass completed 2026-07-15:
 
-- Same-direction action-edge double taps within 0.25 seconds start a 0.40-second, 520 px/s ground roll. Direction is locked, world/gate collision remains active, and a 0.50-second cooldown begins only when the roll finishes.
+- Same-direction action-edge double taps within 0.25 seconds start a 0.30-second, 340 px/s ground roll. Direction is locked, world/gate collision remains active, and a 0.50-second cooldown begins only when the roll finishes.
 - Rolling cancels reload and fire, blocks weapon switching and grenade use, and ignores only damage classified as `projectile`. Melee, contact, explosion, and environment damage remain active; no player collision shape is disabled.
 - Holding/releasing the existing `throw_grenade` action charges a pixel world-space meter with a 1.0-second ping-pong cycle and throws one of three grenades at 340–820 px/s. Grenades use gravity, at most five damped bounces, a 1.70-second pause-safe fuse, one deduplicated 110 px/80-damage enemy-only explosion, and bounded audio/camera feedback.
 - First contact moved from x=5200 to x=2830 (10 seconds at the unchanged 260 px/s run speed). Static platform tops were lowered into the unchanged jump envelope; all three road hazards are now 72 px wide, with the second moved clear of a low platform.
 - `tests/player_combat_abilities_test.gd` and `tests/level_mobility_test.gd` lock input/state/damage/inventory/cleanup plus real platform and hazard traversal. The mixed-weapon runner now performs ordinary route jumps and reaches settlement in 131.66 simulated seconds.
+
+Roll/grenade refinement and encounter-adaptation pass completed 2026-07-15:
+
+- Measurement reduced roll travel from 216.7 px to 107.7 px (about three collision-body widths) while retaining the 0.25-second double-tap window and measured 0.517-second post-action cooldown. Invalid/CD taps cannot arm a delayed roll, focused UI ignores taps, and grenade charge cancels without consumption when a valid roll begins.
+- Projectile-only dodge feedback uses one bounded cyan graze effect and a rate-limited original cue. Debug telemetry/F3 now records roll attempts, successes, dodges, grenade throws, charge average, hits, kills, and damage by target type.
+- The grenade meter is centered above the player; its 5–8 prediction points start at the safe real origin and stop at first terrain contact. Throw speed remains 340–820 px/s with 25% horizontal movement inheritance, 1.0-second charge ping-pong, 1.70-second fuse, accelerating warning ticks, and finite bounce behavior.
+- Explosion damage remains 80 at the center but now falls continuously to 44 at the 110 px edge. One explosion still resolves each target once; three grenades total at most 240 raw Boss damage (20% of 1200 HP), so one throw cannot skip either 65%/30% threshold.
+- First contact now teaches one readable gunner before a compact three-assault wave. Short world-compatible prompts dismiss after the first roll or grenade explosion; one +1 route pickup and a two-grenade Boss-cache top-up remain finite.
+- The primary verifier now includes deterministic roll duration/distance/cooldown and low/mid/high throw-distance measurements. Full combat, environment, audio, restart, Boss, and scripted-playthrough gates remain green; subjective double-tap comfort, grenade hit rate against live enemies, and human mission difficulty remain the stage gate.
 
 ## Phase gates
 

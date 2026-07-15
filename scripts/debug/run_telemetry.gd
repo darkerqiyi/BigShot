@@ -22,6 +22,15 @@ var _current_weapon: StringName = &""
 var _enemy_activated_at: Dictionary = {}
 var _enemy_kinds: Dictionary = {}
 var enemy_lifetimes: Dictionary = {}
+var roll_attempts := 0
+var roll_successes := 0
+var projectiles_dodged := 0
+var grenade_throws := 0
+var grenade_charge_total := 0.0
+var grenade_hits := 0
+var grenade_kills := 0
+var grenade_damage := 0
+var grenade_damage_by_target: Dictionary = {}
 
 
 func _ready() -> void:
@@ -115,6 +124,29 @@ func record_player_damage(amount: int, context: Dictionary) -> void:
 	damage_sources[source] = int(damage_sources.get(source, 0)) + amount
 
 
+func record_roll_attempt(success: bool) -> void:
+	roll_attempts += 1
+	if success:
+		roll_successes += 1
+
+
+func record_projectile_dodge() -> void:
+	projectiles_dodged += 1
+
+
+func record_grenade_throw(charge: float) -> void:
+	grenade_throws += 1
+	grenade_charge_total += clampf(charge, 0.0, 1.0)
+
+
+func record_grenade_hit(target_type: String, applied_damage: int, killed: bool) -> void:
+	grenade_hits += 1
+	grenade_damage += maxi(applied_damage, 0)
+	grenade_damage_by_target[target_type] = int(grenade_damage_by_target.get(target_type, 0)) + maxi(applied_damage, 0)
+	if killed:
+		grenade_kills += 1
+
+
 func record_death(position: Vector2) -> void:
 	deaths.append({
 		"time": snappedf(elapsed, 0.01),
@@ -174,6 +206,15 @@ func get_snapshot() -> Dictionary:
 		"max_attacking_enemies": max_attacking_enemies,
 		"boss_started_at": snappedf(boss_started_at, 0.01),
 		"boss_phase_durations": phase_snapshot,
+		"roll": {"attempts": roll_attempts, "successes": roll_successes, "projectiles_dodged": projectiles_dodged},
+		"grenades": {
+			"throws": grenade_throws,
+			"average_charge": snappedf(grenade_charge_total / float(maxi(grenade_throws, 1)), 0.01),
+			"hits": grenade_hits,
+			"kills": grenade_kills,
+			"damage": grenade_damage,
+			"damage_by_target": grenade_damage_by_target.duplicate(true),
+		},
 	}
 
 

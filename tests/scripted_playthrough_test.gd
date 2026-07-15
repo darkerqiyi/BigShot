@@ -20,6 +20,8 @@ func _run() -> void:
 	Engine.time_scale = 2.0
 	var jump_clock := 0.0
 	var frame_count := 0
+	var roll_used := false
+	var grenade_used := false
 	while is_instance_valid(game) and game.run_state not in ["complete", "dead"] and game.telemetry.elapsed < 240.0:
 		frame_count += 1
 		jump_clock += 1.0 / 30.0
@@ -40,6 +42,15 @@ func _run() -> void:
 				player.weapon_inventory.select_weapon(desired_weapon)
 			var offset: Vector2 = target.global_position - player.global_position
 			player.aim_direction = offset.normalized()
+			if not roll_used and game.run_state == "combat" and game._active_mission_encounter >= 0 and player.is_on_floor():
+				player._register_direction_tap(1 if offset.x >= 0.0 else -1)
+				player._register_direction_tap(1 if offset.x >= 0.0 else -1)
+				roll_used = player.is_rolling
+			if not grenade_used and roll_used and not player.is_rolling and game.run_state == "combat" and game._active_mission_encounter >= 0 and str(target.get("kind")) == "assault" and offset.length() <= 300.0:
+				if player._start_grenade_charge():
+					player.grenade_charge = 0.55
+					player._release_grenade()
+					grenade_used = true
 			var preferred_distance := _preferred_distance(player.current_weapon_id)
 			if game.run_state == "boss":
 				_set_move(0.0)
@@ -82,6 +93,8 @@ func _run() -> void:
 		if int(stats["shots"]) > 0 and int(stats["damage"]) > 0:
 			used_weapon_count += 1
 	_expect(used_weapon_count == 4, "scripted role strategy did not produce value for all four weapons")
+	_expect(int(snapshot["roll"]["successes"]) >= 1, "scripted run did not exercise the tuned ground roll")
+	_expect(int(snapshot["grenades"]["throws"]) >= 1, "scripted run did not exercise charged grenade combat")
 	game.queue_free()
 	for _frame in range(3):
 		await process_frame

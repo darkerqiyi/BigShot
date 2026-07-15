@@ -19,7 +19,8 @@ func _ready() -> void:
 func show_charge(value: float, direction: int) -> void:
 	charge = clampf(value, 0.0, 1.0)
 	facing = 1 if direction >= 0 else -1
-	position = Vector2(34.0 * facing, -64.0)
+	# Keep the meter centered and upright so changing aim direction cannot make it jump.
+	position = Vector2(0.0, -70.0)
 	visible = true
 	queue_redraw()
 

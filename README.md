@@ -17,7 +17,7 @@ Advance through a 20,000 px arcade mission with four gated sectors and eleven mi
 - Jump: `Space`; controller south face button
 - Aim: mouse; controller right stick
 - Fire: left mouse or `J`; controller west face button
-- Charge/throw grenade: hold/release right mouse (`K` remains an alternate mapped action); three grenades per restart
+- Charge/throw grenade: hold/release right mouse (`K` remains an alternate mapped action); capacity three with finite route/Boss-cache resupply
 - Select weapon: `1` auto rifle, `2` scattergun, `3` rail lance, `4` sidearm
 - Reload: `R`; controller north face button
 - Pause/resume: `Escape`
@@ -32,7 +32,7 @@ Advance through a 20,000 px arcade mission with four gated sectors and eleven mi
 ./scripts/verify_prototype.sh
 ```
 
-This command runs Phase 0 regression checks, deterministic horizontal-motion checks, end-to-end prototype smoke tests, four-weapon switching/ballistics tests, roll/grenade state and damage tests, level-mobility checks, enemy/Boss lifecycle tests, combat-character visual contracts, pixel UI/multi-resolution tests, Boss intro/active/phase/defeat UI-flow tests, eight-bus audio/music/voice-limit/spatial-mix-control tests, player animation/muzzle contracts, combat-feedback caps/tiers/cleanup tests, exact environment/collision/encounter contracts, layered Boss-art/state/muzzle contracts, Boss-checkpoint restart verification, encounter-concurrency/readability checks, a complete mixed-weapon scripted playthrough, and a 120-frame headless runtime check. `scripts/tools/capture_frame.gd` also captures four fire signatures, hit tiers, layered environments, character lineups, all three Boss forms, compact HUD states, pause audio controls, attack telegraphs, transitions, death, and settlement.
+This command runs Phase 0 regression checks, deterministic horizontal-motion checks, end-to-end prototype smoke tests, four-weapon switching/ballistics tests, roll/grenade state and damage tests, measured roll duration/distance/cooldown and low/mid/high throw-distance bounds, level-mobility checks, enemy/Boss lifecycle tests, combat-character visual contracts, pixel UI/multi-resolution tests, Boss intro/active/phase/defeat UI-flow tests, eight-bus audio/music/voice-limit/spatial-mix-control tests, player animation/muzzle contracts, combat-feedback caps/tiers/cleanup tests, exact environment/collision/encounter contracts, layered Boss-art/state/muzzle contracts, Boss-checkpoint restart verification, encounter-concurrency/readability checks, a complete mixed-weapon scripted playthrough, and a 120-frame headless runtime check. `scripts/tools/capture_frame.gd` also captures four fire signatures, hit tiers, layered environments, character lineups, all three Boss forms, compact HUD states, pause audio controls, attack telegraphs, transitions, death, and settlement.
 
 ## Scope
 

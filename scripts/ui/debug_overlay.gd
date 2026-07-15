@@ -59,9 +59,12 @@ func _update_readout() -> void:
 		"last_right_tap": 0.0,
 		"last_damage_kind": &"none",
 		"projectile_dodges": 0,
+		"roll_attempts": 0,
+		"roll_successes": 0,
 		"grenade_charging": false,
 		"grenade_charge": 0.0,
 		"grenade_count": 0,
+		"grenade_throws": 0,
 		"predicted_throw_velocity": Vector2.ZERO,
 	}
 	if player != null and player.has_method("get_debug_snapshot"):
@@ -100,23 +103,36 @@ func _update_readout() -> void:
 		"  RELOADING" if player_snapshot["weapon_reloading"] else "",
 		pattern_text,
 	]
-	readout.text += "\n\nROLL: %s  dir %d  CD %.3f\nTap L/R: %.3f / %.3f\nLast damage: %s  projectile dodges: %d" % [
+	readout.text += "\n\nROLL: %s  dir %d  CD %.3f\nTap L/R: %.3f / %.3f\nAttempts / success / dodges: %d / %d / %d\nLast damage: %s" % [
 		"ACTIVE" if player_snapshot["is_rolling"] else "ready" if float(player_snapshot["roll_cooldown"]) <= 0.0 else "cooldown",
 		int(player_snapshot["roll_direction"]),
 		float(player_snapshot["roll_cooldown"]),
 		float(player_snapshot["last_left_tap"]),
 		float(player_snapshot["last_right_tap"]),
-		str(player_snapshot["last_damage_kind"]),
+		int(player_snapshot["roll_attempts"]),
+		int(player_snapshot["roll_successes"]),
 		int(player_snapshot["projectile_dodges"]),
+		str(player_snapshot["last_damage_kind"]),
 	]
 	var predicted_velocity: Vector2 = player_snapshot["predicted_throw_velocity"]
-	readout.text += "\nGRENADE: %s  charge %.2f  count %d\nThrow velocity: (%.1f, %.1f)" % [
+	readout.text += "\nGRENADE: %s  charge %.2f  count %d  throws %d\nThrow velocity: (%.1f, %.1f)" % [
 		"CHARGING" if player_snapshot["grenade_charging"] else "idle",
 		float(player_snapshot["grenade_charge"]),
 		int(player_snapshot["grenade_count"]),
+		int(player_snapshot["grenade_throws"]),
 		predicted_velocity.x,
 		predicted_velocity.y,
 	]
+	var telemetry := get_node_or_null("../RunTelemetry")
+	if telemetry != null and telemetry.has_method("get_snapshot"):
+		var run_snapshot: Dictionary = telemetry.get_snapshot()
+		var grenade_stats: Dictionary = run_snapshot.get("grenades", {})
+		readout.text += "\nRun charge avg %.2f  hits/kills %d/%d\nGrenade damage: %s" % [
+			float(grenade_stats.get("average_charge", 0.0)),
+			int(grenade_stats.get("hits", 0)),
+			int(grenade_stats.get("kills", 0)),
+			JSON.stringify(grenade_stats.get("damage_by_target", {})),
+		]
 	var feedback := get_node_or_null("../CombatFeedback")
 	if feedback != null and feedback.has_method("get_debug_snapshot"):
 		var feedback_snapshot: Dictionary = feedback.get_debug_snapshot()
