@@ -40,6 +40,8 @@ Last updated: 2026-07-15 (Asia/Shanghai)
 
 **Shift sprint and stamina — Pass for executable and captured visual gates; human/survival acceptance remains Partial.** Grounded Shift+A/D reaches 468 px/s (1.80x normal), drains 28 stamina/s only on real movement, exits at zero, waits 0.60 seconds before 22 stamina/s recovery, and requires 20% recovery after exhaustion. SprintStart/Loop/Stop are visual-only poses under `PlayerVisual`; the physics body never rotates. A world-space pixel stamina bar retracts from right to left and fades after full recovery. Shooting, reload, weapon selection, grenade, roll, jump, hurt, death, pause, focus, camera, walls, gates, and restart contracts are covered by `player_sprint_stamina_test.gd`. The current checkout has no playable survival-mode scene or runtime state, so survival-loop balance remains unverified rather than simulated.
 
+**Sprint-jump momentum integration — Pass for automated physics and regression gates; human feel remains Partial.** A sprint jump or sprint-speed platform exit preserves the measured launch velocity (468 px/s at full sprint) rather than immediately falling to the normal 260 px/s cap. Same-direction input maintains the launch cap, no-input drag is 170 px/s², reverse braking is 720 px/s², and non-sprint landing deceleration is 1400 px/s² (roughly 0.15 seconds from full sprint to normal cap). Ordinary air movement cannot acquire sprint speed by pressing Shift. SprintJump/Fall/Land poses and sprint camera forward view are presentation-only; firing and grenade charge retain physical momentum, roll remains ground-only, and sprint-air movement grants no damage immunity. `sprint_jump_momentum_test.gd` locks the ten-frame trace, ledge, landing, exhaustion, action, camera, and closed-gate contracts.
+
 This does not mean every production roadmap phase is complete. Detailed crouch acceptance, formal camera tuning, human loudness/fatigue evaluation, checkpoints outside the Boss retry point, production sprite sheets, and measured human balance remain future work.
 
 ## Pre-change baseline
@@ -52,7 +54,7 @@ This does not mean every production roadmap phase is complete. Detailed crouch a
 ## Playable loop now implemented
 
 - Move with keyboard or controller; jump with full-height and early-release behavior.
-- Hold Shift with horizontal input for a grounded 1.80x sprint governed by a local stamina/exhaustion gate and world-space pixel bar.
+- Hold Shift with horizontal input for a grounded 1.80x sprint governed by a local stamina/exhaustion gate and world-space pixel bar; sprinting jumps and platform exits carry controllable horizontal momentum into the air.
 - Aim with mouse or right stick; hold the auto rifle trigger or point-fire the three semi-automatic weapons.
 - Original layered pixel player with separate shadow, body, arms, weapon pivot, active muzzle, and effects; facing is redrawn without negative node scaling.
 - Four per-weapon magazines, manual/empty reload, distinct pixel muzzle flash/recoil/tracer silhouettes, and bounded decorative casings.

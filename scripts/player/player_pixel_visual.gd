@@ -24,6 +24,8 @@ var sprint_start_remaining := 0.0
 var sprint_stop_remaining := 0.0
 var exhausted_feedback_remaining := 0.0
 var _was_sprinting := false
+var sprint_airborne := false
+var sprint_landing := false
 
 
 func configure_weapon(weapon_id: StringName, data: Dictionary) -> void:
@@ -35,7 +37,7 @@ func set_aim_direction(aim_direction: Vector2, facing: int) -> void:
 	weapon_pivot.set_aim(aim_direction, facing_direction)
 
 
-func update_pose(delta: float, player_velocity: Vector2, grounded: bool, movement_intent: float, aim_direction: Vector2, landing_remaining: float, rolling: bool = false, current_roll_progress: float = 0.0, charging_grenade: bool = false, grenade_throw_remaining: float = 0.0, current_grenade_charge: float = 0.0, current_sprinting: bool = false) -> void:
+func update_pose(delta: float, player_velocity: Vector2, grounded: bool, movement_intent: float, aim_direction: Vector2, landing_remaining: float, rolling: bool = false, current_roll_progress: float = 0.0, charging_grenade: bool = false, grenade_throw_remaining: float = 0.0, current_grenade_charge: float = 0.0, current_sprinting: bool = false, current_sprint_airborne: bool = false, current_sprint_landing: bool = false) -> void:
 	animation_phase += delta * (4.0 + absf(player_velocity.x) * 0.035)
 	hurt_remaining = maxf(hurt_remaining - delta, 0.0)
 	exhausted_feedback_remaining = maxf(exhausted_feedback_remaining - delta, 0.0)
@@ -47,6 +49,8 @@ func update_pose(delta: float, player_velocity: Vector2, grounded: bool, movemen
 	sprint_start_remaining = maxf(sprint_start_remaining - delta, 0.0)
 	sprint_stop_remaining = maxf(sprint_stop_remaining - delta, 0.0)
 	sprinting = current_sprinting
+	sprint_airborne = current_sprint_airborne
+	sprint_landing = current_sprint_landing
 	_was_sprinting = current_sprinting
 	weapon_pivot.update_animation(delta)
 	set_aim_direction(aim_direction, facing_direction)
@@ -74,10 +78,10 @@ func update_pose(delta: float, player_velocity: Vector2, grounded: bool, movemen
 		animation_state = &"grenade_charge"
 		weapon_pivot.visible = false
 	else:
-		if landing_remaining > 0.0:
-			base_animation_state = &"land"
+		if landing_remaining > 0.0 or sprint_landing:
+			base_animation_state = &"sprint_land" if sprint_landing else &"land"
 		elif not grounded:
-			base_animation_state = &"jump" if player_velocity.y < 0.0 else &"fall"
+			base_animation_state = (&"sprint_jump" if player_velocity.y < 0.0 else &"sprint_fall") if sprint_airborne else (&"jump" if player_velocity.y < 0.0 else &"fall")
 		elif sprinting:
 			base_animation_state = &"sprint_start" if sprint_start_remaining > 0.0 else &"sprint"
 		elif sprint_stop_remaining > 0.0 and absf(player_velocity.x) > Tuning.PLAYER_MAX_SPEED and weapon_pivot.recoil_remaining <= 0.0:
@@ -94,7 +98,7 @@ func update_pose(delta: float, player_velocity: Vector2, grounded: bool, movemen
 			animation_state = &"sprint_loop"
 		else:
 			animation_state = base_animation_state
-		weapon_pivot.visible = base_animation_state not in [&"sprint_start", &"sprint", &"sprint_stop"] or animation_state in [&"hurt", &"shoot"]
+		weapon_pivot.visible = base_animation_state not in [&"sprint_start", &"sprint", &"sprint_stop", &"sprint_jump", &"sprint_fall", &"sprint_land"] or animation_state in [&"hurt", &"shoot"]
 
 	var bob := _body_bob()
 	body_sprite.position = Vector2(0, 9) if rolling else Vector2.ZERO
@@ -140,6 +144,8 @@ func reset_visual() -> void:
 	grenade_charging = false
 	grenade_charge_value = 0.0
 	sprinting = false
+	sprint_airborne = false
+	sprint_landing = false
 	_was_sprinting = false
 	sprint_start_remaining = 0.0
 	sprint_stop_remaining = 0.0
@@ -172,6 +178,12 @@ func _body_bob() -> float:
 			return round(absf(sin(animation_phase * 1.7)))
 		&"sprint_start", &"sprint", &"sprint_stop":
 			return round(absf(sin(animation_phase * 2.35)))
+		&"sprint_jump":
+			return -2.0
+		&"sprint_fall":
+			return 0.0
+		&"sprint_land":
+			return 2.0
 		&"jump":
 			return -1.0
 		&"fall":
@@ -182,7 +194,7 @@ func _body_bob() -> float:
 
 
 func _draw() -> void:
-	if sprinting:
+	if sprinting or sprint_airborne:
 		var behind := -1.0 if facing_direction > 0 else 1.0
 		var drift := fposmod(animation_phase * 5.0, 10.0)
 		for index in range(3):
