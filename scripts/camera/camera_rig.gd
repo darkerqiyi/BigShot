@@ -23,7 +23,8 @@ func _physics_process(delta: float) -> void:
 	if target != null:
 		var target_aim: Vector2 = target.get("aim_direction")
 		var aim_bonus: float = float(target.get("weapon_camera_aim_bonus"))
-		var desired_look_ahead := calculate_desired_look_ahead(target.velocity.x, target_aim.x, aim_bonus)
+		var target_sprinting := bool(target.get("is_sprinting"))
+		var desired_look_ahead := calculate_desired_look_ahead(target.velocity.x, target_aim.x, aim_bonus, target_sprinting)
 		_look_ahead = smooth_look_ahead(_look_ahead, desired_look_ahead, delta)
 		var desired_x := clampf(target.global_position.x + _look_ahead, 640.0, level_width - 640.0)
 		global_position.x = roundf(lerpf(global_position.x, desired_x, 1.0 - exp(-delta * Tuning.CAMERA_FOLLOW_RESPONSE)))
@@ -58,15 +59,16 @@ func clear_feedback() -> void:
 	offset = Vector2.ZERO
 
 
-static func calculate_desired_look_ahead(velocity_x: float, aim_x: float, aim_bonus: float = 0.0) -> float:
+static func calculate_desired_look_ahead(velocity_x: float, aim_x: float, aim_bonus: float = 0.0, sprinting: bool = false) -> float:
 	var movement_look := clampf(
 		velocity_x * Tuning.CAMERA_VELOCITY_LOOK_FACTOR,
 		-Tuning.CAMERA_MOVEMENT_LOOK_LIMIT,
 		Tuning.CAMERA_MOVEMENT_LOOK_LIMIT,
 	)
 	var aim_look := clampf(aim_x, -1.0, 1.0) * (Tuning.CAMERA_AIM_LOOK_PIXELS + aim_bonus)
-	var limit := Tuning.CAMERA_MAX_LOOK_AHEAD + aim_bonus
-	return clampf(movement_look + aim_look, -limit, limit)
+	var sprint_look := signf(velocity_x) * Tuning.CAMERA_SPRINT_LOOK_AHEAD if sprinting and absf(velocity_x) > Tuning.PLAYER_MAX_SPEED else 0.0
+	var limit := Tuning.CAMERA_MAX_LOOK_AHEAD + aim_bonus + (Tuning.CAMERA_SPRINT_LOOK_AHEAD if sprinting else 0.0)
+	return clampf(movement_look + aim_look + sprint_look, -limit, limit)
 
 
 static func smooth_look_ahead(current: float, target_value: float, delta: float) -> float:

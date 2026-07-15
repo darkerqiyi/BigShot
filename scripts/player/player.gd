@@ -42,6 +42,7 @@ const MAX_HEALTH := Tuning.PLAYER_MAX_HEALTH
 @onready var weapon_inventory: Node = $WeaponInventory
 @onready var grenade_charge_indicator: Node2D = $GrenadeChargeIndicator
 @onready var grenade_trajectory_preview: Node2D = $GrenadeTrajectoryPreview
+@onready var stamina_bar: Node2D = $StaminaBar
 
 var movement_intent := 0.0
 var facing_direction := 1
@@ -81,6 +82,15 @@ var grenade_charge := 0.0
 var grenade_charge_elapsed := 0.0
 var grenade_throw_remaining := 0.0
 var predicted_throw_velocity := Vector2.ZERO
+var is_sprinting := false
+var current_stamina := Tuning.PLAYER_MAX_STAMINA
+var stamina_regen_delay_remaining := 0.0
+var exhausted := false
+var sprint_block_reason: StringName = &"input_released"
+var current_move_speed := Tuning.PLAYER_MAX_SPEED
+var _sprint_decelerating := false
+var _hurt_sprint_block_remaining := 0.0
+var _window_focused := true
 
 var ammo: int:
 	get:
@@ -108,6 +118,7 @@ func _ready() -> void:
 	visual.set_aim_direction(aim_direction, facing_direction)
 	ammo_changed.emit(ammo, int(weapon_inventory.get_current_data()["magazine_size"]), false)
 	grenade_count_changed.emit(grenade_count, Tuning.PLAYER_GRENADE_COUNT)
+	stamina_bar.reset_full()
 
 
 func _input(event: InputEvent) -> void:
@@ -130,8 +141,12 @@ func _input(event: InputEvent) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_window_focused = false
 		_clear_double_tap_cache()
 		_cancel_grenade_charge()
+		_stop_sprint(&"window_focus")
+	elif what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		_window_focused = true
 
 
 func _physics_process(delta: float) -> void:
@@ -146,9 +161,11 @@ func _physics_process(delta: float) -> void:
 	last_right_tap_remaining = maxf(last_right_tap_remaining - delta, 0.0)
 	jump_buffer_remaining = maxf(jump_buffer_remaining - delta, 0.0)
 	grenade_throw_remaining = maxf(grenade_throw_remaining - delta, 0.0)
+	_hurt_sprint_block_remaining = maxf(_hurt_sprint_block_remaining - delta, 0.0)
 	coyote_remaining = COYOTE_TIME if is_on_floor() else maxf(coyote_remaining - delta, 0.0)
 
 	if not alive:
+		_stop_sprint(&"dead")
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL_SPEED)
 		velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
 		move_and_slide()
@@ -167,14 +184,29 @@ func _physics_process(delta: float) -> void:
 			request_jump()
 	else:
 		movement_intent = 0.0
+	_update_sprint_request(grounded_before_move)
 
-	velocity.x = HorizontalMotion.advance_velocity(velocity.x, movement_intent, delta) if grounded_before_move else HorizontalMotion.advance_air_velocity(velocity.x, movement_intent, delta)
+	if grounded_before_move and is_sprinting:
+		velocity.x = HorizontalMotion.advance_sprint_velocity(velocity.x, movement_intent, delta)
+	elif grounded_before_move and _sprint_decelerating:
+		velocity.x = HorizontalMotion.advance_after_sprint_velocity(velocity.x, movement_intent, delta)
+		if absf(velocity.x) <= Tuning.PLAYER_MAX_SPEED + 0.1 or velocity.x * movement_intent <= 0.0:
+			_sprint_decelerating = false
+	elif grounded_before_move:
+		velocity.x = HorizontalMotion.advance_velocity(velocity.x, movement_intent, delta)
+	else:
+		velocity.x = HorizontalMotion.advance_air_velocity(velocity.x, movement_intent, delta)
+	current_move_speed = absf(velocity.x)
 	if not is_on_floor():
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL_SPEED)
 	else:
 		velocity.y = 0.0
 
 	if jump_buffer_remaining > 0.0 and coyote_remaining > 0.0:
+		var sprint_jump_speed := Tuning.PLAYER_SPRINT_SPEED * Tuning.PLAYER_SPRINT_JUMP_INHERIT
+		if is_sprinting:
+			velocity.x = clampf(velocity.x, -sprint_jump_speed, sprint_jump_speed)
+			_stop_sprint(&"airborne", true)
 		velocity.y = -JUMP_SPEED
 		_jump_stretch_remaining = 0.10
 		jump_buffer_remaining = 0.0
@@ -183,7 +215,9 @@ func _physics_process(delta: float) -> void:
 	if controls_enabled and Input.is_action_just_released("jump") and velocity.y < -JUMP_CUT_SPEED:
 		velocity.y = -JUMP_CUT_SPEED
 
-	if not is_zero_approx(aim_direction.x):
+	if is_sprinting and not is_zero_approx(movement_intent):
+		facing_direction = 1 if movement_intent > 0.0 else -1
+	elif not is_zero_approx(aim_direction.x):
 		facing_direction = 1 if aim_direction.x > 0.0 else -1
 	elif not is_zero_approx(movement_intent):
 		facing_direction = 1 if movement_intent > 0.0 else -1
@@ -193,7 +227,9 @@ func _physics_process(delta: float) -> void:
 	var fall_speed_before_move := velocity.y
 	var x_before_move := global_position.x
 	move_and_slide()
-	_update_footsteps(absf(global_position.x - x_before_move))
+	var actual_x_distance := absf(global_position.x - x_before_move)
+	_update_footsteps(actual_x_distance)
+	_update_stamina(delta, actual_x_distance, grounded_before_move)
 	if not grounded_before_move and is_on_floor() and fall_speed_before_move >= Tuning.PLAYER_LANDING_MIN_SPEED:
 		_on_landed(fall_speed_before_move)
 	_animate_visual(delta)
@@ -202,6 +238,91 @@ func _physics_process(delta: float) -> void:
 func request_jump() -> void:
 	if alive and controls_enabled and not is_rolling:
 		jump_buffer_remaining = JUMP_BUFFER_TIME
+
+
+func _update_sprint_request(grounded: bool) -> void:
+	var reason := _get_sprint_block_reason(grounded)
+	sprint_block_reason = reason
+	if reason == &"none":
+		if not is_sprinting:
+			is_sprinting = true
+			_sprint_decelerating = false
+			muzzle_flash.visible = false
+		weapon_inventory.cancel_reload()
+		return
+	_stop_sprint(reason)
+
+
+func _get_sprint_block_reason(grounded: bool) -> StringName:
+	if not alive:
+		return &"dead"
+	if not controls_enabled:
+		return &"controls_disabled"
+	if not _window_focused:
+		return &"window_focus"
+	var focus_owner := get_viewport().gui_get_focus_owner()
+	if focus_owner != null and focus_owner.is_visible_in_tree():
+		return &"ui_focus"
+	if not Input.is_action_pressed("sprint"):
+		return &"input_released"
+	if absf(movement_intent) <= 0.1:
+		return &"no_horizontal_input"
+	if not grounded:
+		return &"airborne"
+	if is_rolling:
+		return &"rolling"
+	if grenade_charging or grenade_throw_remaining > 0.0:
+		return &"grenade"
+	if _hurt_sprint_block_remaining > 0.0:
+		return &"hurt"
+	if Input.is_action_pressed("fire"):
+		return &"fire"
+	if weapon_inventory.switch_cooldown > 0.0:
+		return &"weapon_switch"
+	if exhausted:
+		return &"exhausted"
+	if not is_sprinting and current_stamina < Tuning.PLAYER_STAMINA_MIN_START:
+		return &"stamina_low"
+	if is_on_wall() and movement_intent * get_wall_normal().x < -0.1:
+		return &"wall"
+	return &"none"
+
+
+func _stop_sprint(reason: StringName, preserve_momentum: bool = false) -> void:
+	if is_sprinting:
+		is_sprinting = false
+		_sprint_decelerating = not preserve_momentum and absf(velocity.x) > Tuning.PLAYER_MAX_SPEED
+	if reason != &"none":
+		sprint_block_reason = reason
+
+
+func _update_stamina(delta: float, actual_x_distance: float, grounded_before_move: bool) -> void:
+	if is_sprinting and grounded_before_move:
+		if actual_x_distance > Tuning.PLAYER_SPRINT_WALL_DISTANCE_EPSILON:
+			current_stamina = maxf(current_stamina - Tuning.PLAYER_STAMINA_DRAIN_PER_SECOND * delta, 0.0)
+			stamina_regen_delay_remaining = Tuning.PLAYER_STAMINA_REGEN_DELAY
+			if is_zero_approx(current_stamina):
+				exhausted = true
+				_stop_sprint(&"exhausted")
+				visual.play_exhausted()
+		elif is_on_wall() and movement_intent * get_wall_normal().x < -0.1:
+			_stop_sprint(&"wall")
+		return
+	if current_stamina >= Tuning.PLAYER_MAX_STAMINA:
+		current_stamina = Tuning.PLAYER_MAX_STAMINA
+		stamina_regen_delay_remaining = 0.0
+		return
+	if not alive or not controls_enabled or is_rolling or _hurt_sprint_block_remaining > 0.0:
+		return
+	stamina_regen_delay_remaining = maxf(stamina_regen_delay_remaining - delta, 0.0)
+	if stamina_regen_delay_remaining > 0.0:
+		return
+	var regen_multiplier := Tuning.PLAYER_STAMINA_AIR_REGEN_MULTIPLIER if not is_on_floor() else 1.0
+	if grenade_charging:
+		regen_multiplier *= Tuning.PLAYER_STAMINA_GRENADE_REGEN_MULTIPLIER
+	current_stamina = minf(current_stamina + Tuning.PLAYER_STAMINA_REGEN_PER_SECOND * regen_multiplier * delta, Tuning.PLAYER_MAX_STAMINA)
+	if exhausted and current_stamina >= Tuning.PLAYER_STAMINA_RESTART_THRESHOLD:
+		exhausted = false
 
 
 func _register_direction_tap(direction: int) -> void:
@@ -233,6 +354,7 @@ func _try_start_roll(direction: int) -> bool:
 		return false
 	if grenade_charging:
 		_cancel_grenade_charge()
+	_stop_sprint(&"rolling")
 	is_rolling = true
 	roll_successes += 1
 	roll_direction = -1 if direction < 0 else 1
@@ -240,6 +362,7 @@ func _try_start_roll(direction: int) -> bool:
 	movement_intent = float(roll_direction)
 	facing_direction = roll_direction
 	velocity.x = Tuning.PLAYER_ROLL_SPEED * roll_direction
+	current_move_speed = absf(velocity.x)
 	weapon_inventory.cancel_reload()
 	muzzle_flash.visible = false
 	roll_started.emit(global_position + Vector2(0, 30), roll_direction)
@@ -247,11 +370,13 @@ func _try_start_roll(direction: int) -> bool:
 
 
 func _update_roll(delta: float) -> void:
+	sprint_block_reason = &"rolling"
 	roll_remaining = maxf(roll_remaining - delta, 0.0)
 	if not is_on_floor():
 		_end_roll()
 		return
 	velocity.x = Tuning.PLAYER_ROLL_SPEED * roll_direction
+	current_move_speed = absf(velocity.x)
 	velocity.y = 0.0
 	var x_before_move := global_position.x
 	move_and_slide()
@@ -302,6 +427,7 @@ func _handle_grenade(delta: float) -> void:
 func _start_grenade_charge() -> bool:
 	if not alive or not controls_enabled or is_rolling or grenade_throw_remaining > 0.0 or grenade_count <= 0:
 		return false
+	_stop_sprint(&"grenade")
 	grenade_charging = true
 	grenade_charge = 0.0
 	grenade_charge_elapsed = 0.0
@@ -372,6 +498,8 @@ func _safe_grenade_origin() -> Vector2:
 
 func cancel_transient_actions() -> void:
 	_clear_double_tap_cache()
+	_stop_sprint(&"controls_disabled")
+	_sprint_decelerating = false
 	_end_roll(false)
 	roll_cooldown_remaining = 0.0
 	grenade_throw_remaining = 0.0
@@ -393,7 +521,7 @@ func _update_aim() -> void:
 
 func _handle_weapon(delta: float) -> void:
 	_rifle_bloom = maxf(_rifle_bloom - 5.0 * delta, 0.0)
-	if is_rolling or grenade_charging or grenade_throw_remaining > 0.0:
+	if is_sprinting or is_rolling or grenade_charging or grenade_throw_remaining > 0.0:
 		return
 	_handle_weapon_selection()
 	if weapon_inventory.is_reloading():
@@ -501,7 +629,9 @@ func _animate_visual(delta: float) -> void:
 	_jump_stretch_remaining = maxf(_jump_stretch_remaining - delta, 0.0)
 	visual.facing_direction = facing_direction
 	var roll_progress := 1.0 - roll_remaining / maxf(Tuning.PLAYER_ROLL_DURATION, 0.001) if is_rolling else 0.0
-	visual.update_pose(delta, velocity, is_on_floor(), movement_intent, aim_direction, _landing_feedback_remaining, is_rolling, roll_progress, grenade_charging, grenade_throw_remaining, grenade_charge)
+	visual.update_pose(delta, velocity, is_on_floor(), movement_intent, aim_direction, _landing_feedback_remaining, is_rolling, roll_progress, grenade_charging, grenade_throw_remaining, grenade_charge, is_sprinting)
+	var recovering := current_stamina < Tuning.PLAYER_MAX_STAMINA and stamina_regen_delay_remaining <= 0.0 and not is_sprinting and not is_rolling and _hurt_sprint_block_remaining <= 0.0
+	stamina_bar.set_state(current_stamina, Tuning.PLAYER_MAX_STAMINA, is_sprinting, exhausted, recovering)
 
 
 func _on_landed(fall_speed: float) -> void:
@@ -515,9 +645,10 @@ func _update_footsteps(distance_moved: float) -> void:
 		_footstep_distance = 0.0
 		return
 	_footstep_distance += distance_moved
-	if _footstep_distance < 52.0:
+	var step_distance := 42.0 if is_sprinting else 52.0
+	if _footstep_distance < step_distance:
 		return
-	_footstep_distance = fmod(_footstep_distance, 52.0)
+	_footstep_distance = fmod(_footstep_distance, step_distance)
 	_footstep_side = 1 - _footstep_side
 	var intensity := clampf(absf(velocity.x) / maxf(Tuning.PLAYER_MAX_SPEED, 1.0), 0.35, 1.0)
 	footstep.emit(global_position + Vector2(0, 30), intensity, _footstep_side)
@@ -534,6 +665,9 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vec
 		return
 	if is_rolling:
 		_end_roll()
+	_stop_sprint(&"hurt")
+	_hurt_sprint_block_remaining = Tuning.PLAYER_STAMINA_HURT_REGEN_PAUSE
+	stamina_regen_delay_remaining = maxf(stamina_regen_delay_remaining, Tuning.PLAYER_STAMINA_HURT_REGEN_PAUSE)
 	if grenade_charging:
 		_cancel_grenade_charge()
 	health = maxi(health - amount, 0)
@@ -619,4 +753,13 @@ func get_debug_snapshot() -> Dictionary:
 		"grenade_charge": grenade_charge,
 		"grenade_count": grenade_count,
 		"predicted_throw_velocity": predicted_throw_velocity,
+		"is_sprinting": is_sprinting,
+		"current_stamina": current_stamina,
+		"max_stamina": Tuning.PLAYER_MAX_STAMINA,
+		"drain_rate": Tuning.PLAYER_STAMINA_DRAIN_PER_SECOND,
+		"regen_delay_remaining": stamina_regen_delay_remaining,
+		"regen_rate": Tuning.PLAYER_STAMINA_REGEN_PER_SECOND,
+		"exhausted": exhausted,
+		"current_move_speed": current_move_speed,
+		"sprint_block_reason": sprint_block_reason,
 	}
