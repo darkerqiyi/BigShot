@@ -35,6 +35,9 @@ func _draw() -> void:
 	if pose in [&"sprint_start", &"sprint", &"sprint_stop"]:
 		_draw_sprint()
 		return
+	if pose in [&"sprint_jump", &"sprint_fall", &"sprint_land"]:
+		_draw_sprint_air()
+		return
 	var body_bob := 0
 	if pose == &"idle":
 		body_bob = 1 if sin(phase * 2.2) > 0.55 else 0
@@ -169,6 +172,37 @@ func _draw_sprint() -> void:
 	_pixel_rect(-27, -5, 9, 4, Color("f49a36"))
 	if hurt_strength > 0.0:
 		_draw_hurt_highlight(0)
+
+
+func _draw_sprint_air() -> void:
+	var lean := 7
+	var body_y := -2 if pose == &"sprint_jump" else (2 if pose == &"sprint_fall" else 5)
+	var rear_leg_y := 8 if pose == &"sprint_jump" else 13
+	var front_leg_y := 13 if pose == &"sprint_jump" else 8
+	if pose == &"sprint_land":
+		rear_leg_y = 16
+		front_leg_y = 16
+	_pixel_rect(-18, rear_leg_y, 13, 8, INK)
+	_pixel_rect(-15, rear_leg_y + 2, 10, 5, SUIT_DARK)
+	_pixel_rect(4, front_leg_y, 16, 8, INK)
+	_pixel_rect(6, front_leg_y + 2, 11, 5, DEEP)
+	_pixel_rect(-14 + lean, -8 + body_y, 30, 24, INK)
+	_pixel_rect(-11 + lean, -6 + body_y, 24, 18, SUIT)
+	_pixel_rect(-9 + lean, 7 + body_y, 20, 6, SUIT_DARK)
+	_pixel_rect(-1 + lean, -6 + body_y, 5, 18, GOLD)
+	_pixel_rect(-13 + lean, -3 + body_y, 7, 15, SUIT_LIGHT)
+	_pixel_rect(8 + lean, -3 + body_y, 6, 15, DEEP)
+	_pixel_rect(-12 + lean * 2, -29 + body_y, 28, 22, INK)
+	_pixel_rect(-9 + lean * 2, -27 + body_y, 22, 17, FACE)
+	_pixel_rect(-14 + lean * 2, -33 + body_y, 30, 10, INK)
+	_pixel_rect(-11 + lean * 2, -31 + body_y, 24, 7, SUIT)
+	_pixel_rect(-6 + lean * 2, -22 + body_y, 20, 7, INK)
+	_pixel_rect(-4 + lean * 2, -20 + body_y, 16, 4, VISOR)
+	_pixel_rect(-13 + lean, -10 + body_y, 26, 4, GOLD)
+	_pixel_rect(-23, -8 + body_y, 12, 4, GOLD)
+	_pixel_rect(-28, -5 + body_y, 9, 4, Color("f49a36"))
+	if hurt_strength > 0.0:
+		_draw_hurt_highlight(body_y)
 
 
 func _pixel_rect(x: int, y: int, width: int, height: int, color: Color) -> void:

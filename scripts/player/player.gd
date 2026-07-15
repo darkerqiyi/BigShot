@@ -91,6 +91,12 @@ var current_move_speed := Tuning.PLAYER_MAX_SPEED
 var _sprint_decelerating := false
 var _hurt_sprint_block_remaining := 0.0
 var _window_focused := true
+var launched_from_sprint := false
+var airborne_entry_speed := 0.0
+var airborne_speed_cap := Tuning.PLAYER_MAX_SPEED
+var sprint_air_visual := false
+var sprint_land_remaining := 0.0
+var _airborne_initialized := false
 
 var ammo: int:
 	get:
@@ -162,6 +168,7 @@ func _physics_process(delta: float) -> void:
 	jump_buffer_remaining = maxf(jump_buffer_remaining - delta, 0.0)
 	grenade_throw_remaining = maxf(grenade_throw_remaining - delta, 0.0)
 	_hurt_sprint_block_remaining = maxf(_hurt_sprint_block_remaining - delta, 0.0)
+	sprint_land_remaining = maxf(sprint_land_remaining - delta, 0.0)
 	coyote_remaining = COYOTE_TIME if is_on_floor() else maxf(coyote_remaining - delta, 0.0)
 
 	if not alive:
@@ -195,7 +202,7 @@ func _physics_process(delta: float) -> void:
 	elif grounded_before_move:
 		velocity.x = HorizontalMotion.advance_velocity(velocity.x, movement_intent, delta)
 	else:
-		velocity.x = HorizontalMotion.advance_air_velocity(velocity.x, movement_intent, delta)
+		velocity.x = HorizontalMotion.advance_airborne_velocity(velocity.x, movement_intent, delta, airborne_speed_cap, launched_from_sprint)
 	current_move_speed = absf(velocity.x)
 	if not is_on_floor():
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL_SPEED)
@@ -203,10 +210,7 @@ func _physics_process(delta: float) -> void:
 		velocity.y = 0.0
 
 	if jump_buffer_remaining > 0.0 and coyote_remaining > 0.0:
-		var sprint_jump_speed := Tuning.PLAYER_SPRINT_SPEED * Tuning.PLAYER_SPRINT_JUMP_INHERIT
-		if is_sprinting:
-			velocity.x = clampf(velocity.x, -sprint_jump_speed, sprint_jump_speed)
-			_stop_sprint(&"airborne", true)
+		_begin_airborne(velocity.x, is_sprinting)
 		velocity.y = -JUMP_SPEED
 		_jump_stretch_remaining = 0.10
 		jump_buffer_remaining = 0.0
@@ -228,16 +232,42 @@ func _physics_process(delta: float) -> void:
 	var x_before_move := global_position.x
 	move_and_slide()
 	var actual_x_distance := absf(global_position.x - x_before_move)
+	if grounded_before_move and not is_on_floor() and not _airborne_initialized:
+		_begin_airborne(velocity.x, is_sprinting)
 	_update_footsteps(actual_x_distance)
 	_update_stamina(delta, actual_x_distance, grounded_before_move)
-	if not grounded_before_move and is_on_floor() and fall_speed_before_move >= Tuning.PLAYER_LANDING_MIN_SPEED:
-		_on_landed(fall_speed_before_move)
+	if not grounded_before_move and is_on_floor():
+		_finish_airborne()
+		if fall_speed_before_move >= Tuning.PLAYER_LANDING_MIN_SPEED:
+			_on_landed(fall_speed_before_move)
 	_animate_visual(delta)
 
 
 func request_jump() -> void:
 	if alive and controls_enabled and not is_rolling:
 		jump_buffer_remaining = JUMP_BUFFER_TIME
+
+
+func _begin_airborne(horizontal_speed: float, sprint_launch: bool) -> void:
+	_airborne_initialized = true
+	launched_from_sprint = sprint_launch
+	airborne_entry_speed = horizontal_speed
+	airborne_speed_cap = clampf(absf(horizontal_speed), Tuning.PLAYER_MAX_SPEED, Tuning.PLAYER_SPRINT_JUMP_SPEED_CAP) if sprint_launch else Tuning.PLAYER_MAX_SPEED
+	sprint_air_visual = sprint_launch
+	if sprint_launch:
+		_stop_sprint(&"airborne", true)
+
+
+func _finish_airborne() -> void:
+	var landed_from_sprint := launched_from_sprint
+	_airborne_initialized = false
+	launched_from_sprint = false
+	airborne_entry_speed = 0.0
+	airborne_speed_cap = Tuning.PLAYER_MAX_SPEED
+	sprint_air_visual = false
+	if landed_from_sprint and absf(velocity.x) > Tuning.PLAYER_MAX_SPEED:
+		_sprint_decelerating = true
+		sprint_land_remaining = Tuning.PLAYER_SPRINT_LAND_VISUAL_TIME
 
 
 func _update_sprint_request(grounded: bool) -> void:
@@ -428,6 +458,7 @@ func _start_grenade_charge() -> bool:
 	if not alive or not controls_enabled or is_rolling or grenade_throw_remaining > 0.0 or grenade_count <= 0:
 		return false
 	_stop_sprint(&"grenade")
+	sprint_air_visual = false
 	grenade_charging = true
 	grenade_charge = 0.0
 	grenade_charge_elapsed = 0.0
@@ -500,6 +531,12 @@ func cancel_transient_actions() -> void:
 	_clear_double_tap_cache()
 	_stop_sprint(&"controls_disabled")
 	_sprint_decelerating = false
+	_airborne_initialized = false
+	launched_from_sprint = false
+	airborne_entry_speed = 0.0
+	airborne_speed_cap = Tuning.PLAYER_MAX_SPEED
+	sprint_air_visual = false
+	sprint_land_remaining = 0.0
 	_end_roll(false)
 	roll_cooldown_remaining = 0.0
 	grenade_throw_remaining = 0.0
@@ -521,6 +558,8 @@ func _update_aim() -> void:
 
 func _handle_weapon(delta: float) -> void:
 	_rifle_bloom = maxf(_rifle_bloom - 5.0 * delta, 0.0)
+	if sprint_air_visual and Input.is_action_pressed("fire"):
+		sprint_air_visual = false
 	if is_sprinting or is_rolling or grenade_charging or grenade_throw_remaining > 0.0:
 		return
 	_handle_weapon_selection()
@@ -629,7 +668,7 @@ func _animate_visual(delta: float) -> void:
 	_jump_stretch_remaining = maxf(_jump_stretch_remaining - delta, 0.0)
 	visual.facing_direction = facing_direction
 	var roll_progress := 1.0 - roll_remaining / maxf(Tuning.PLAYER_ROLL_DURATION, 0.001) if is_rolling else 0.0
-	visual.update_pose(delta, velocity, is_on_floor(), movement_intent, aim_direction, _landing_feedback_remaining, is_rolling, roll_progress, grenade_charging, grenade_throw_remaining, grenade_charge, is_sprinting)
+	visual.update_pose(delta, velocity, is_on_floor(), movement_intent, aim_direction, _landing_feedback_remaining, is_rolling, roll_progress, grenade_charging, grenade_throw_remaining, grenade_charge, is_sprinting, sprint_air_visual, sprint_land_remaining > 0.0)
 	var recovering := current_stamina < Tuning.PLAYER_MAX_STAMINA and stamina_regen_delay_remaining <= 0.0 and not is_sprinting and not is_rolling and _hurt_sprint_block_remaining <= 0.0
 	stamina_bar.set_state(current_stamina, Tuning.PLAYER_MAX_STAMINA, is_sprinting, exhausted, recovering)
 
@@ -762,4 +801,9 @@ func get_debug_snapshot() -> Dictionary:
 		"exhausted": exhausted,
 		"current_move_speed": current_move_speed,
 		"sprint_block_reason": sprint_block_reason,
+		"launched_from_sprint": launched_from_sprint,
+		"airborne_entry_speed": airborne_entry_speed,
+		"airborne_speed_cap": airborne_speed_cap,
+		"sprint_air_visual": sprint_air_visual,
+		"sprint_land_remaining": sprint_land_remaining,
 	}

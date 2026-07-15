@@ -171,6 +171,14 @@ Shift sprint and stamina pass completed 2026-07-15:
 - Visual-only SprintStart/Loop/Stop poses lean the body without rotating or resizing the 34x64 physics body. The weapon is stowed, footsteps accelerate, small pixel dust trails appear, and the independent world-space bar retracts from right to left before fading after full recovery.
 - Camera movement look gains a smooth, bounded 38 px sprint extension while preserving the 20,000 px level clamp. `player_sprint_stamina_test.gd`, captured sprint frames, the mixed-weapon PVE run, and the full verifier are the acceptance gates. No survival-mode runtime currently exists, so Roguelite/survival additions remain deferred.
 
+Sprint-jump momentum integration completed 2026-07-15:
+
+- Sprint jumps and sprint-speed platform exits now preserve the true launch `velocity.x` instead of applying the former 0.82 multiplier and then steering toward the 260 px/s normal cap. Ordinary jumps remain capped at normal air speed, and pressing Shift after an ordinary takeoff cannot create sprint speed.
+- Sprint-air control uses a 468 px/s maximum, 360 px/s² same-direction maintenance, 170 px/s² no-input drag, and 720 px/s² reverse braking. Releasing input keeps useful inertia; reversing must first brake the old direction.
+- Landing without sprint intent blends toward 260 px/s with 1400 px/s² deceleration (about 0.15 seconds from full sprint). Holding Shift and direction resumes ground sprint only when stamina/exhaustion rules permit. Airborne sprint momentum consumes no stamina and grants no roll invulnerability.
+- `SprintJump`, `SprintFall`, and `SprintLand` are visual-only silhouettes. Airborne fire or grenade charge can return to the armed-air pose without changing physical momentum; the camera retains bounded sprint forward view until landing.
+- `sprint_jump_momentum_test.gd` records pre-launch, launch, and ten airborne frames and covers left/right inheritance, drag, reverse control, platform exits, landing intent/exhaustion, fire/grenade/roll interaction, camera look-ahead, and closed-gate collision. The full verifier treats any Godot script/parse error as failure.
+
 ## Phase gates
 
 ### Phase 0 — Project audit, technical baseline, and diagnostics

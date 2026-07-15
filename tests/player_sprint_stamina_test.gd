@@ -178,13 +178,17 @@ func _test_action_priorities(game: Node) -> void:
 func _test_jump_damage_pause_and_wall(game: Node) -> void:
 	var player = game.player
 	await _start_sprint(player, 1)
+	var sprint_speed_before_jump: float = absf(player.velocity.x)
 	Input.action_press("jump")
-	await physics_frame
+	for _frame in range(4):
+		await physics_frame
+		if not player.is_on_floor() and player.velocity.y < 0.0:
+			break
 	Input.action_release("jump")
-	await physics_frame
 	var stamina_in_air: float = player.current_stamina
 	_expect(not player.is_sprinting and not player.is_on_floor(), "sprint jump did not enter the airborne state")
-	_expect(absf(player.velocity.x) <= Tuning.PLAYER_SPRINT_SPEED * Tuning.PLAYER_SPRINT_JUMP_INHERIT + 0.1, "sprint jump inherited too much horizontal speed")
+	_expect(absf(player.velocity.x) >= sprint_speed_before_jump - 1.0, "sprint jump did not inherit its true horizontal speed")
+	_expect(absf(player.velocity.x) <= Tuning.PLAYER_SPRINT_JUMP_SPEED_CAP + 0.1, "sprint jump exceeded its configured airborne speed cap")
 	for _frame in range(8):
 		await physics_frame
 	_expect(player.current_stamina >= stamina_in_air, "airborne Shift continued draining stamina")
