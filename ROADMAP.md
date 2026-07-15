@@ -4,7 +4,7 @@ This is the project's only roadmap. Progress is advanced one small, complete, ve
 
 ## Product guardrails
 
-- Original 2D side-scrolling run-and-gun game built with Godot 4.x.
+- Original 2D side-scrolling run-and-gun game built with Godot 4.7.
 - Arcade-first controls with keyboard/mouse and gamepad support.
 - Single-player first; gameplay ownership and input APIs should not prevent later local co-op.
 - The first vertical slice eventually includes movement, jump, crouch, shooting, throwable, three enemy archetypes, one advancing level, and a small boss.
