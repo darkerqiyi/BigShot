@@ -90,6 +90,18 @@ if [[ -n "$filtered_errors" ]]; then
 fi
 grep "PLAYER_ABILITIES_PASS" "$LOG_DIR/player_abilities.log"
 
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/player_abilities_measurement_test.gd >"$LOG_DIR/player_abilities_measurement.log" 2>&1; then
+	cat "$LOG_DIR/player_abilities_measurement.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/player_abilities_measurement.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "PLAYER_ABILITIES_METRICS" "$LOG_DIR/player_abilities_measurement.log"
+grep "PLAYER_ABILITIES_MEASUREMENT_PASS" "$LOG_DIR/player_abilities_measurement.log"
+
 if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/combat_feedback_test.gd >"$LOG_DIR/combat_feedback.log" 2>&1; then
 	cat "$LOG_DIR/combat_feedback.log" >&2
 	exit 1

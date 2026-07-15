@@ -28,6 +28,10 @@ func _run() -> void:
 	await _test_grenade_charge_and_state_contract(grenade_input_game)
 	grenade_input_game.queue_free()
 	await process_frame
+	var tutorial_game := await _create_game()
+	await _test_tutorial_and_supply_contract(tutorial_game)
+	tutorial_game.queue_free()
+	await process_frame
 	var grenade_damage_game := await _create_game()
 	await _test_grenade_physics_and_damage(grenade_damage_game)
 	grenade_damage_game.queue_free()
@@ -95,20 +99,25 @@ func _test_roll_state_damage_and_cooldown(game: Node) -> void:
 	Input.action_release("fire")
 	_expect(volleys[0] == 0, "player fired a weapon during a roll")
 	var health_before: int = player.health
+	var evade_events := [0]
+	player.projectile_evaded.connect(func(_position: Vector2, _direction: Vector2) -> void: evade_events[0] += 1)
 	player.take_damage(20, Vector2.ZERO, player.global_position, {"source": &"gunner", "damage_kind": &"projectile"})
-	_expect(player.health == health_before and player.projectile_dodges == 1 and player.is_rolling, "roll failed to evade projectile damage cleanly")
+	_expect(player.health == health_before and player.projectile_dodges == 1 and evade_events[0] == 1 and player.is_rolling, "roll failed to evade projectile damage cleanly")
+	_expect(game.telemetry.roll_successes >= 1 and game.telemetry.projectiles_dodged == 1, "debug telemetry did not record roll success and projectile dodge")
 	player.take_damage(14, Vector2.ZERO, player.global_position, {"source": &"spikes", "damage_kind": &"environment"})
 	_expect(player.health == health_before - 14 and not player.is_rolling, "roll incorrectly evaded environment damage")
 	player._invulnerability_remaining = 0.0
 	player.roll_cooldown_remaining = 0.0
 	_start_roll(player, 1)
-	for _frame in range(25):
+	while player.is_rolling:
 		await physics_frame
 	_expect(not player.is_rolling and player.roll_cooldown_remaining > 0.45, "0.5s cooldown did not begin after roll completion")
 	var velocity_after_roll: float = absf(player.velocity.x)
 	_expect(velocity_after_roll <= Tuning.PLAYER_MAX_SPEED + 0.1, "roll permanently retained boosted movement speed")
 	_start_roll(player, 1)
 	_expect(not player.is_rolling, "roll restarted during cooldown")
+	player._register_direction_tap(1)
+	_expect(player.last_right_tap_remaining == 0.0, "cooldown incorrectly armed a delayed double-tap cache")
 	for _frame in range(31):
 		await physics_frame
 	_start_roll(player, 1)
@@ -142,6 +151,11 @@ func _test_grenade_charge_and_state_contract(game: Node) -> void:
 	for _frame in range(2):
 		await physics_frame
 	_expect(player.grenade_charging and player.grenade_charge_indicator.visible and player.grenade_trajectory_preview.visible, "right-button charge did not show the world-space meter and trajectory")
+	_expect(player.grenade_trajectory_preview.local_origin == player._grenade_local_origin(), "trajectory preview did not begin at the real grenade origin")
+	var meter_position: Vector2 = player.grenade_charge_indicator.position
+	player.facing_direction = -1
+	player.grenade_charge_indicator.show_charge(player.grenade_charge, player.facing_direction)
+	_expect(player.grenade_charge_indicator.position == meter_position, "charge meter jumped when the player changed facing")
 	var charge_before: float = float(player.grenade_charge)
 	for _frame in range(75):
 		await physics_frame
@@ -172,7 +186,8 @@ func _test_grenade_charge_and_state_contract(game: Node) -> void:
 		await physics_frame
 	Input.action_release("fire")
 	_expect(volleys[0] == 0, "player fired while charging a grenade")
-	_expect(not player._try_start_roll(1), "grenade charge allowed a simultaneous roll")
+	_expect(player._try_start_roll(1) and not player.grenade_charging, "roll did not cancel grenade charge without consuming inventory")
+	player._end_roll(false)
 	game._on_pause_changed(true)
 	_expect(not player.grenade_charging and not player.grenade_charge_indicator.visible, "pause did not cancel grenade charge")
 	game._on_pause_changed(false)
@@ -214,7 +229,7 @@ func _test_grenade_physics_and_damage(game: Node) -> void:
 			break
 	_expect(bounce_events[0] >= 1 and bounce_events[0] <= 5, "grenade did not perform a finite number of physical bounces")
 	_expect(explosion_events[0] == 1 and game.get_tree().get_nodes_in_group("grenade_effects").size() == 1, "grenade fuse did not produce exactly one explosion and visual")
-	var elite: Node = game._spawn_enemy("elite", Vector2(1200, 552), 0.0, false, false)
+	var elite: Node = game._spawn_enemy("elite", Vector2(1210, 552), 0.0, false, false)
 	elite.activate()
 	elite.set_physics_process(false)
 	var shield: Node = game._spawn_enemy("shield", Vector2(1270, 552), 0.0, false, false)
@@ -224,9 +239,9 @@ func _test_grenade_physics_and_damage(game: Node) -> void:
 	for _frame in range(2):
 		await physics_frame
 	var player_health: int = player.health
-	game._on_player_grenade_exploded(Vector2(1210, 545), 110.0, 80, 360.0)
+	game._on_player_grenade_exploded(Vector2(1210, 552), 110.0, 80, 360.0)
 	_expect(elite.health == elite.max_health - 80, "one grenade explosion did not damage the elite exactly once")
-	_expect(shield.health == shield.max_health - 62 and shield.guard_open_remaining >= 0.99, "grenade did not produce the configured shield break")
+	_expect(shield.health < shield.max_health and shield.health > shield.max_health - 62 and shield.guard_open_remaining >= 0.99, "grenade falloff or shield break was not applied at range")
 	_expect(player.health == player_health, "player grenade incorrectly damaged its owner")
 	game._debug_unlock_boss_for_tests()
 	player.global_position = Vector2(17850, 552)
@@ -244,6 +259,30 @@ func _test_grenade_physics_and_damage(game: Node) -> void:
 	player.take_damage(9999, Vector2.ZERO, player.global_position, {"source": &"test", "damage_kind": &"environment"})
 	await process_frame
 	_expect(game.grenades.get_child_count() == 0, "player death left live grenades in the scene")
+
+
+func _test_tutorial_and_supply_contract(game: Node) -> void:
+	var player = game.player
+	player.global_position.x = 650.0
+	game._process(0.0)
+	_expect(game._roll_tutorial_shown and game._active_ability_tutorial == &"roll" and game.hud.objective_label.text.contains("DOUBLE-TAP"), "safe opening did not present the roll tutorial")
+	player.roll_started.emit(player.global_position, 1)
+	_expect(game._active_ability_tutorial == &"", "successful roll did not dismiss its tutorial")
+	player.global_position.x = 1800.0
+	game._process(0.0)
+	_expect(game._grenade_tutorial_shown and game._active_ability_tutorial == &"grenade" and game.hud.objective_label.text.contains("HOLD RMB"), "safe opening did not present the grenade tutorial")
+	game._on_player_grenade_exploded(Vector2(-300, -300), 40.0, 1, 1.0)
+	_expect(game._active_ability_tutorial == &"", "first grenade explosion did not dismiss its tutorial")
+	player.grenade_count = 0
+	var grenade_pickup: Node
+	for pickup in game.get_tree().get_nodes_in_group("mission_pickups"):
+		if pickup.pickup_kind == &"grenade":
+			grenade_pickup = pickup
+			break
+	_expect(grenade_pickup != null, "route has no finite grenade resupply")
+	if grenade_pickup != null:
+		grenade_pickup._on_body_entered(player)
+		_expect(player.grenade_count == 1, "grenade pickup did not restore exactly one grenade")
 
 
 func _start_roll(player: Node, direction: int) -> void:

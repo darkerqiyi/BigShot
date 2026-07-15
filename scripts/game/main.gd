@@ -20,9 +20,9 @@ const MISSION_ENCOUNTERS := [
 	{
 		"id": 1, "title": "FIRST CONTACT", "trigger_x": 2830.0, "gate_x": 5200.0, "target_seconds": Vector2i(45, 60),
 		"waves": [
-			[{"kind": "assault", "x": 3480.0, "y": 552.0}, {"kind": "gunner", "x": 4300.0, "y": 552.0}],
-			[{"kind": "assault", "x": 3260.0, "y": 552.0}, {"kind": "assault", "x": 4560.0, "y": 552.0}, {"kind": "gunner", "x": 4020.0, "y": 552.0}],
-			[{"kind": "shield", "x": 3660.0, "y": 552.0}, {"kind": "gunner", "x": 4820.0, "y": 552.0}],
+			[{"kind": "gunner", "x": 4300.0, "y": 552.0}],
+			[{"kind": "assault", "x": 3780.0, "y": 552.0}, {"kind": "assault", "x": 3900.0, "y": 552.0}, {"kind": "assault", "x": 4020.0, "y": 552.0}],
+			[{"kind": "shield", "x": 3660.0, "y": 552.0}, {"kind": "assault", "x": 4560.0, "y": 552.0}, {"kind": "gunner", "x": 4820.0, "y": 552.0}],
 		],
 	},
 	{
@@ -94,6 +94,9 @@ var _run_projectiles := 0
 var _run_hits := 0
 var _run_kills := 0
 var _run_damage_events := 0
+var _roll_tutorial_shown := false
+var _grenade_tutorial_shown := false
+var _active_ability_tutorial: StringName = &""
 static var _resume_boss_checkpoint_next := false
 static var _resume_run_stats_next: Dictionary = {}
 
@@ -134,7 +137,12 @@ func _ready() -> void:
 	player.jumped.connect(_on_player_jumped)
 	player.footstep.connect(_on_player_footstep)
 	player.low_health.connect(func() -> void: sfx.play_cue(&"low_health"))
-	player.roll_started.connect(func(_position: Vector2, _direction: int) -> void: sfx.play_cue(&"roll"))
+	player.roll_started.connect(_on_player_roll_started)
+	player.roll_attempted.connect(func(success: bool) -> void:
+		if telemetry != null:
+			telemetry.record_roll_attempt(success)
+	)
+	player.projectile_evaded.connect(_on_player_projectile_evaded)
 	player.grenade_requested.connect(_spawn_player_grenade)
 	player.grenade_count_changed.connect(hud.set_grenade_count)
 	player.grenade_empty.connect(func() -> void: sfx.play_cue(&"grenade_empty"))
@@ -178,6 +186,7 @@ func _process(_delta: float) -> void:
 	var attacking_count := 0
 	if run_state == "combat":
 		_update_mission_flow(_delta)
+		_update_ability_tutorials()
 	for enemy in enemies.get_children():
 		if bool(enemy.get("alive")) and bool(enemy.get("active")):
 			active_count += 1
@@ -297,6 +306,7 @@ func _recover_offscreen_enemies() -> void:
 
 
 func _spawn_mission_interactions() -> void:
+	_spawn_pickup(Vector2(5480, 548), &"grenade", 1, 0.0)
 	_spawn_pickup(Vector2(7620, 548), &"health", 20, 0.0)
 	_spawn_pickup(Vector2(10660, 548), &"ammo", 0, 0.35)
 	_spawn_pickup(Vector2(13420, 548), &"health", 25, 0.0)
@@ -322,8 +332,31 @@ func _spawn_pickup(pickup_position: Vector2, kind: StringName, amount: int, ammo
 
 
 func _on_pickup_collected(kind: StringName, amount: int) -> void:
-	hud.show_banner("FIELD MEDKIT // +%d HP" % amount if kind == &"health" else "FIELD AMMO // MAGAZINES STABILIZED", Color(0.42, 1.0, 0.72, 1.0))
+	var message := "FIELD MEDKIT // +%d HP" % amount
+	if kind == &"ammo":
+		message = "FIELD AMMO // MAGAZINES STABILIZED"
+	elif kind == &"grenade":
+		message = "FIELD ORDNANCE // +%d GRENADE" % amount
+	hud.show_banner(message, Color(0.42, 1.0, 0.72, 1.0))
 	sfx.play_cue(&"mission_start")
+
+
+func _update_ability_tutorials() -> void:
+	if not _roll_tutorial_shown and player.global_position.x >= 650.0:
+		_roll_tutorial_shown = true
+		_active_ability_tutorial = &"roll"
+		hud.show_objective_update("DOUBLE-TAP A / D // ROLL THROUGH PROJECTILES", 4.5)
+	elif not _grenade_tutorial_shown and player.global_position.x >= 1800.0:
+		_grenade_tutorial_shown = true
+		_active_ability_tutorial = &"grenade"
+		hud.show_objective_update("HOLD RMB // CHARGE  •  RELEASE // THROW GRENADE", 4.5)
+
+
+func _on_player_roll_started(_position: Vector2, _direction: int) -> void:
+	sfx.play_cue(&"roll")
+	if _active_ability_tutorial == &"roll":
+		_active_ability_tutorial = &""
+		hud.hide_objective()
 
 
 func _spawn_enemy(kind: String, spawn_position: Vector2, activation: float, counts_for_progress: bool, boss_summon: bool, encounter_id: int = 0) -> Node:
@@ -373,7 +406,7 @@ func _spawn_projectile(origin: Vector2, direction: Vector2, team: StringName, da
 		sfx.play_world_cue(&"boss_cannon" if source == &"boss" else &"enemy_shot", origin, player.global_position, source == &"boss")
 
 
-func _spawn_player_grenade(origin: Vector2, initial_velocity: Vector2) -> void:
+func _spawn_player_grenade(origin: Vector2, initial_velocity: Vector2, charge: float = 0.0) -> void:
 	if run_state in ["dead", "complete", "boss_defeated"]:
 		return
 	var grenade := PlayerGrenadeScript.new()
@@ -390,11 +423,19 @@ func _spawn_player_grenade(origin: Vector2, initial_velocity: Vector2) -> void:
 	grenade.bounced.connect(func(position: Vector2, strength: float) -> void:
 		sfx.play_world_cue(&"grenade_bounce", position, player.global_position, false, -2.0 + strength * 2.0)
 	)
+	grenade.fuse_tick.connect(func(position: Vector2, urgency: float) -> void:
+		sfx.play_world_cue(&"grenade_fuse", position, player.global_position, false, lerpf(-2.0, 1.2, urgency))
+	)
 	grenade.exploded.connect(_on_player_grenade_exploded)
+	if telemetry != null:
+		telemetry.record_grenade_throw(charge)
 	sfx.play_cue(&"grenade_throw")
 
 
 func _on_player_grenade_exploded(center: Vector2, radius: float, damage: int, knockback: float) -> void:
+	if _active_ability_tutorial == &"grenade":
+		_active_ability_tutorial = &""
+		hud.hide_objective()
 	var shape := CircleShape2D.new()
 	shape.radius = radius
 	var query := PhysicsShapeQueryParameters2D.new()
@@ -411,10 +452,14 @@ func _on_player_grenade_exploded(center: Vector2, radius: float, damage: int, kn
 		if not target.is_in_group("enemies") and not target.is_in_group("boss"):
 			continue
 		resolved_targets[target.get_instance_id()] = true
+		var distance_ratio := clampf(center.distance_to(target.global_position) / maxf(radius, 1.0), 0.0, 1.0)
+		var applied_request := maxi(1, int(round(float(damage) * lerpf(1.0, Tuning.GRENADE_EDGE_DAMAGE_MULTIPLIER, distance_ratio))))
+		var health_before := int(target.get("health"))
+		var alive_before := bool(target.get("alive")) if target.get("alive") != null else health_before > 0
 		var direction: Vector2 = (target.global_position - center).normalized()
 		if direction.length_squared() < 0.01:
 			direction = Vector2.UP
-		target.take_damage(damage, direction * knockback, center, {
+		target.take_damage(applied_request, direction * knockback, center, {
 			"weapon_id": &"grenade",
 			"team": &"player",
 			"direction": direction,
@@ -422,11 +467,23 @@ func _on_player_grenade_exploded(center: Vector2, radius: float, damage: int, kn
 			"source": &"grenade",
 			"damage_kind": &"explosion",
 		})
+		if telemetry != null:
+			var health_after := int(target.get("health"))
+			var alive_after := bool(target.get("alive")) if target.get("alive") != null else health_after > 0
+			var target_type := "boss" if target.is_in_group("boss") else str(target.get("kind"))
+			telemetry.record_grenade_hit(target_type, maxi(health_before - health_after, 0), alive_before and not alive_after)
 	var effect := GrenadeExplosionScript.new()
 	effects.add_child(effect)
 	effect.configure(center, radius)
 	sfx.play_world_cue(&"grenade_explosion", center, player.global_position, true)
 	combat_feedback.request_shake(&"grenade_explosion", &"grenade_explosion")
+
+
+func _on_player_projectile_evaded(hit_position: Vector2, direction: Vector2) -> void:
+	_spawn_impact(hit_position, Color("6ee7ff"), 0.42, false, &"block", -direction)
+	sfx.play_world_cue(&"projectile_evade", hit_position, player.global_position, false)
+	if telemetry != null:
+		telemetry.record_projectile_dodge()
 
 
 func _spawn_player_volley(origin: Vector2, directions: Array[Vector2], team: StringName, weapon_data: Dictionary, damage: int) -> void:
@@ -877,9 +934,13 @@ func _grant_boss_resupply(full_restore: bool = false) -> void:
 	if _boss_resupply_granted:
 		return
 	_boss_resupply_granted = true
-	player.apply_field_resupply(player.MAX_HEALTH if full_restore else Tuning.BOSS_RESUPPLY_HEALTH, 1.0 if full_restore else Tuning.BOSS_RESUPPLY_AMMO_FLOOR)
+	player.apply_field_resupply(
+		player.MAX_HEALTH if full_restore else Tuning.BOSS_RESUPPLY_HEALTH,
+		1.0 if full_restore else Tuning.BOSS_RESUPPLY_AMMO_FLOOR,
+		Tuning.PLAYER_GRENADE_COUNT if full_restore else Tuning.BOSS_RESUPPLY_GRENADES,
+	)
 	var ammo_percent := 100 if full_restore else int(Tuning.BOSS_RESUPPLY_AMMO_FLOOR * 100.0)
-	hud.show_banner("COMMAND CACHE // HP RESTORED  •  AMMO FLOOR %d%%" % ammo_percent, Color(0.42, 1.0, 0.72, 1.0))
+	hud.show_banner("COMMAND CACHE // HP RESTORED  •  AMMO %d%%  •  GRENADES" % ammo_percent, Color(0.42, 1.0, 0.72, 1.0))
 
 
 func _restore_boss_checkpoint() -> void:

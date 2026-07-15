@@ -52,7 +52,7 @@ func _test_cue_catalog(audio: Node) -> void:
 		&"shield_block", &"guard_break", &"enemy_warning", &"elite_warning", &"enemy_hurt", &"enemy_hurt_heavy",
 		&"assault_swing", &"shield_bash", &"elite_attack", &"elite_step", &"player_hurt",
 		&"player_death", &"jump", &"footstep", &"heavy_land", &"low_health",
-		&"roll", &"grenade_throw", &"grenade_bounce", &"grenade_explosion", &"grenade_empty",
+		&"roll", &"projectile_evade", &"grenade_throw", &"grenade_bounce", &"grenade_fuse", &"grenade_explosion", &"grenade_empty",
 		&"boss_intro", &"boss_land", &"boss_phase_2", &"boss_phase_3", &"boss_charge_release", &"boss_area_release",
 		&"boss_warning_volley", &"boss_warning_charge", &"boss_warning_area", &"boss_failure", &"boss_explosion", &"boss_core_off", &"boss_death",
 		&"ui_hover", &"ui_pause", &"ui_resume", &"mission_complete",

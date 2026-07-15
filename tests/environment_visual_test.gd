@@ -63,6 +63,9 @@ func _test_encounter_contract(game: Node) -> void:
 			authored_count += (wave as Array).size()
 		_expect(authored_count == expected_counts[index], "encounter %d authored enemy count changed" % (index + 1))
 		_expect(float(encounter["trigger_x"]) == expected_triggers[index] and float(encounter["gate_x"]) == expected_gates[index], "encounter %d route bounds changed" % (index + 1))
+	var first_waves: Array = game.MISSION_ENCOUNTERS[0]["waves"]
+	_expect((first_waves[0] as Array).size() == 1 and str(first_waves[0][0]["kind"]) == "gunner", "first-contact roll lesson is not a single readable ranged threat")
+	_expect((first_waves[1] as Array).size() == 3 and first_waves[1].all(func(entry: Dictionary) -> bool: return str(entry["kind"]) == "assault"), "first-contact grenade lesson is not a compact assault group")
 	_expect(game.FIRST_RUN_TARGET_SECONDS == Vector2i(350, 460) and game.SKILLED_TARGET_SECONDS == Vector2i(240, 360), "mission duration targets no longer match the 5–8/4–6 minute brief")
 	_expect(game.boss.global_position.distance_to(Vector2(19000, 520)) < 0.1, "Boss spawn does not match the expanded arena")
 	var opening_seconds := (2830.0 - 230.0) / 260.0
@@ -75,7 +78,7 @@ func _test_encounter_contract(game: Node) -> void:
 		_expect(584.0 - platform_top <= jump_apex - 3.0, "%s remains above the player's reliable jump apex" % platform_name)
 	for hazard in game.get_tree().get_nodes_in_group("mission_hazards"):
 		_expect(float(hazard.strip_width) <= 72.0, "road hazard remains wider than the player's reliable running jump")
-	_expect(game.get_tree().get_nodes_in_group("mission_pickups").size() == 4, "expanded route is missing its four finite supply pickups")
+	_expect(game.get_tree().get_nodes_in_group("mission_pickups").size() == 5, "expanded route is missing its five finite supply pickups")
 	_expect(game.get_tree().get_nodes_in_group("mission_hazards").size() == 3, "expanded route is missing readable environmental hazards")
 	_expect(game.get_tree().get_nodes_in_group("mission_platforms").size() == 2, "platform sector is missing its two moving platforms")
 

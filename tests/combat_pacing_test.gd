@@ -80,7 +80,7 @@ func _test_encounter_sequence_and_resupply(game: Node) -> void:
 	_expect(game._active_mission_encounter == 0 and game.mission_gate.closed and game.mission_gate.collision_layer == 1, "first major encounter did not lock its forward boundary")
 	var gate_shape := game.mission_gate.get_child(0) as CollisionShape2D
 	_expect((game.player.collision_mask & 1) != 0 and gate_shape != null and gate_shape.shape.size.y >= 700.0, "closed encounter gate does not physically block the player route")
-	_expect(game.enemies_remaining == 2 and game._active_wave_index == 0, "first encounter did not begin with its authored teaching wave")
+	_expect(game.enemies_remaining == 1 and game._active_wave_index == 0, "first encounter did not begin with its single-gunner roll lesson")
 	game.player.global_position.x = game.BOSS_ENTRY_X + 20.0
 	game._process(0.0)
 	_expect(game.run_state == "combat" and not game.boss.active, "player could start the Boss before clearing the gated mission")
@@ -96,10 +96,11 @@ func _test_encounter_sequence_and_resupply(game: Node) -> void:
 	_expect(game.enemies_remaining == 3 and game._active_wave_index == 1, "second wave did not spawn after the short buffer")
 	_clear_active_wave(game)
 	game._process(0.69)
-	_expect(game.enemies_remaining == 2 and game._active_wave_index == 2, "final first-sector wave is incorrect")
+	_expect(game.enemies_remaining == 3 and game._active_wave_index == 2, "final first-sector wave is incorrect")
 	_clear_active_wave(game)
 	_expect(game._mission_encounter_cursor == 1 and not game.mission_gate.closed, "clearing a major encounter did not immediately reopen the route")
 	game.player.health = 18
+	game.player.grenade_count = 0
 	for weapon_id in WeaponData.ORDER:
 		game.player.weapon_inventory._ammo[weapon_id] = 0
 	while game._mission_encounter_cursor < game.MISSION_ENCOUNTERS.size():
@@ -111,6 +112,7 @@ func _test_encounter_sequence_and_resupply(game: Node) -> void:
 			if game._active_mission_encounter >= 0:
 				game._process(0.69)
 	_expect(game.run_state == "boss_ready" and game.player.health == 63, "limited Boss cache did not add the configured 45 health")
+	_expect(game.player.grenade_count == 2, "limited Boss cache did not restore exactly two grenades from empty")
 	for weapon_id in WeaponData.ORDER:
 		var data := WeaponData.get_weapon(weapon_id)
 		var expected_floor := int(ceil(float(data["magazine_size"]) * 0.60))

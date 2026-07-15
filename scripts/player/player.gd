@@ -15,7 +15,9 @@ signal footstep(position: Vector2, intensity: float, side: int)
 signal low_health
 signal roll_started(position: Vector2, direction: int)
 signal roll_finished(position: Vector2)
-signal grenade_requested(origin: Vector2, initial_velocity: Vector2)
+signal roll_attempted(success: bool)
+signal projectile_evaded(position: Vector2, direction: Vector2)
+signal grenade_requested(origin: Vector2, initial_velocity: Vector2, charge: float)
 signal grenade_count_changed(current: int, maximum: int)
 signal grenade_empty
 signal died
@@ -70,6 +72,9 @@ var roll_cooldown_remaining := 0.0
 var last_left_tap_remaining := 0.0
 var last_right_tap_remaining := 0.0
 var projectile_dodges := 0
+var roll_attempts := 0
+var roll_successes := 0
+var grenade_throws := 0
 var grenade_count := Tuning.PLAYER_GRENADE_COUNT
 var grenade_charging := false
 var grenade_charge := 0.0
@@ -113,6 +118,9 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
 	if not alive or not controls_enabled or get_tree().paused:
+		return
+	var focus_owner := get_viewport().gui_get_focus_owner()
+	if focus_owner != null and focus_owner.is_visible_in_tree():
 		return
 	if event.is_action_pressed("move_left"):
 		_register_direction_tap(-1)
@@ -197,16 +205,23 @@ func request_jump() -> void:
 
 
 func _register_direction_tap(direction: int) -> void:
+	if is_rolling or grenade_throw_remaining > 0.0 or roll_cooldown_remaining > 0.0 or not is_on_floor():
+		_clear_double_tap_cache()
+		return
 	if direction < 0:
 		if last_left_tap_remaining > 0.0:
-			_try_start_roll(-1)
+			roll_attempts += 1
+			var started := _try_start_roll(-1)
+			roll_attempted.emit(started)
 			_clear_double_tap_cache()
 		else:
 			last_left_tap_remaining = Tuning.PLAYER_DOUBLE_TAP_WINDOW
 			last_right_tap_remaining = 0.0
 	else:
 		if last_right_tap_remaining > 0.0:
-			_try_start_roll(1)
+			roll_attempts += 1
+			var started := _try_start_roll(1)
+			roll_attempted.emit(started)
 			_clear_double_tap_cache()
 		else:
 			last_right_tap_remaining = Tuning.PLAYER_DOUBLE_TAP_WINDOW
@@ -214,9 +229,12 @@ func _register_direction_tap(direction: int) -> void:
 
 
 func _try_start_roll(direction: int) -> bool:
-	if not alive or not controls_enabled or is_rolling or grenade_charging or grenade_throw_remaining > 0.0 or roll_cooldown_remaining > 0.0 or not is_on_floor():
+	if not alive or not controls_enabled or is_rolling or grenade_throw_remaining > 0.0 or roll_cooldown_remaining > 0.0 or not is_on_floor():
 		return false
+	if grenade_charging:
+		_cancel_grenade_charge()
 	is_rolling = true
+	roll_successes += 1
 	roll_direction = -1 if direction < 0 else 1
 	roll_remaining = Tuning.PLAYER_ROLL_DURATION
 	movement_intent = float(roll_direction)
@@ -271,7 +289,7 @@ func _handle_grenade(delta: float) -> void:
 		grenade_charge = pingpong(grenade_charge_elapsed / maxf(Tuning.GRENADE_CHARGE_CYCLE, 0.01), 1.0)
 		predicted_throw_velocity = _calculate_grenade_velocity()
 		grenade_charge_indicator.show_charge(grenade_charge, facing_direction)
-		grenade_trajectory_preview.show_prediction(predicted_throw_velocity, Tuning.GRENADE_GRAVITY)
+		grenade_trajectory_preview.show_prediction(_grenade_local_origin(), predicted_throw_velocity, Tuning.GRENADE_GRAVITY)
 		return
 	if grenade_throw_remaining > 0.0 or not Input.is_action_just_pressed("throw_grenade"):
 		return
@@ -291,7 +309,7 @@ func _start_grenade_charge() -> bool:
 	weapon_inventory.cancel_reload()
 	muzzle_flash.visible = false
 	grenade_charge_indicator.show_charge(grenade_charge, facing_direction)
-	grenade_trajectory_preview.show_prediction(predicted_throw_velocity, Tuning.GRENADE_GRAVITY)
+	grenade_trajectory_preview.show_prediction(_grenade_local_origin(), predicted_throw_velocity, Tuning.GRENADE_GRAVITY)
 	return true
 
 
@@ -300,14 +318,16 @@ func _release_grenade() -> bool:
 		_cancel_grenade_charge()
 		return false
 	predicted_throw_velocity = _calculate_grenade_velocity()
-	var origin := global_position + Vector2(20.0 * facing_direction, -18.0)
+	var release_charge := grenade_charge
+	var origin := _safe_grenade_origin()
 	grenade_count -= 1
+	grenade_throws += 1
 	grenade_charging = false
 	grenade_throw_remaining = 0.18
 	grenade_charge_indicator.hide_charge()
 	grenade_trajectory_preview.hide_prediction()
 	grenade_count_changed.emit(grenade_count, Tuning.PLAYER_GRENADE_COUNT)
-	grenade_requested.emit(origin, predicted_throw_velocity)
+	grenade_requested.emit(origin, predicted_throw_velocity, release_charge)
 	return true
 
 
@@ -332,7 +352,22 @@ func _calculate_grenade_velocity() -> Vector2:
 		direction.x = 0.18 * float(facing_direction)
 	direction = direction.normalized()
 	var speed := lerpf(Tuning.GRENADE_MIN_THROW_SPEED, Tuning.GRENADE_MAX_THROW_SPEED, grenade_charge)
-	return direction * speed
+	return direction * speed + Vector2(velocity.x * Tuning.GRENADE_HORIZONTAL_VELOCITY_INHERIT, 0.0)
+
+
+func _grenade_local_origin() -> Vector2:
+	return Vector2(20.0 * facing_direction, -18.0)
+
+
+func _safe_grenade_origin() -> Vector2:
+	var start := global_position + Vector2(0.0, -18.0)
+	var intended := global_position + _grenade_local_origin()
+	var query := PhysicsRayQueryParameters2D.create(start, intended, 1)
+	query.exclude = [get_rid()]
+	var collision := get_world_2d().direct_space_state.intersect_ray(query)
+	if collision.is_empty():
+		return intended
+	return (collision["position"] as Vector2) - Vector2(8.0 * facing_direction, 0.0)
 
 
 func cancel_transient_actions() -> void:
@@ -488,12 +523,14 @@ func _update_footsteps(distance_moved: float) -> void:
 	footstep.emit(global_position + Vector2(0, 30), intensity, _footstep_side)
 
 
-func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, _hit_position: Vector2 = Vector2.ZERO, context: Dictionary = {}) -> void:
+func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vector2 = Vector2.ZERO, context: Dictionary = {}) -> void:
 	if not alive or _invulnerability_remaining > 0.0:
 		return
 	last_damage_kind = StringName(context.get("damage_kind", &"contact"))
 	if is_rolling and last_damage_kind == &"projectile":
 		projectile_dodges += 1
+		var dodge_direction: Vector2 = context.get("direction", Vector2(float(-roll_direction), 0.0))
+		projectile_evaded.emit(hit_position if hit_position != Vector2.ZERO else global_position, dodge_direction)
 		return
 	if is_rolling:
 		_end_roll()
@@ -514,13 +551,21 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, _hit_position: Ve
 		_die()
 
 
-func apply_field_resupply(health_amount: int, ammo_floor_ratio: float) -> void:
+func apply_field_resupply(health_amount: int, ammo_floor_ratio: float, grenade_amount: int = 0) -> void:
 	if not alive:
 		return
 	health = mini(health + maxi(health_amount, 0), MAX_HEALTH)
 	_low_health_announced = health <= int(MAX_HEALTH * 0.25)
 	weapon_inventory.refill_to_floor(ammo_floor_ratio)
+	add_grenades(grenade_amount)
 	health_changed.emit(health, MAX_HEALTH)
+
+
+func add_grenades(amount: int) -> void:
+	if amount <= 0:
+		return
+	grenade_count = mini(grenade_count + amount, Tuning.PLAYER_GRENADE_COUNT)
+	grenade_count_changed.emit(grenade_count, Tuning.PLAYER_GRENADE_COUNT)
 
 
 func _flash_hurt() -> void:
@@ -567,6 +612,9 @@ func get_debug_snapshot() -> Dictionary:
 		"last_right_tap": last_right_tap_remaining,
 		"last_damage_kind": last_damage_kind,
 		"projectile_dodges": projectile_dodges,
+		"roll_attempts": roll_attempts,
+		"roll_successes": roll_successes,
+		"grenade_throws": grenade_throws,
 		"grenade_charging": grenade_charging,
 		"grenade_charge": grenade_charge,
 		"grenade_count": grenade_count,

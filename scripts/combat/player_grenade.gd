@@ -3,6 +3,7 @@ class_name PlayerGrenade
 
 signal bounced(position: Vector2, strength: float)
 signal exploded(position: Vector2, radius: float, damage: int, knockback: float)
+signal fuse_tick(position: Vector2, urgency: float)
 
 var gravity := 1200.0
 var fuse_remaining := 1.70
@@ -14,6 +15,8 @@ var blast_knockback := 360.0
 var _bounce_count := 0
 var _settled := false
 var _resolved := false
+var _initial_fuse := 1.70
+var _next_fuse_tick := 0.72
 
 
 func configure(origin: Vector2, initial_velocity: Vector2, options: Dictionary = {}) -> void:
@@ -21,6 +24,8 @@ func configure(origin: Vector2, initial_velocity: Vector2, options: Dictionary =
 	velocity = initial_velocity
 	gravity = float(options.get("gravity", gravity))
 	fuse_remaining = float(options.get("fuse", fuse_remaining))
+	_initial_fuse = fuse_remaining
+	_next_fuse_tick = minf(0.72, fuse_remaining * 0.48)
 	bounce_damping = float(options.get("bounce_damping", bounce_damping))
 	max_bounces = int(options.get("max_bounces", max_bounces))
 	blast_radius = float(options.get("radius", blast_radius))
@@ -44,6 +49,10 @@ func _physics_process(delta: float) -> void:
 	if _resolved:
 		return
 	fuse_remaining = maxf(fuse_remaining - delta, 0.0)
+	if fuse_remaining <= _next_fuse_tick and fuse_remaining > 0.0:
+		var urgency := 1.0 - clampf(fuse_remaining / maxf(_initial_fuse, 0.01), 0.0, 1.0)
+		fuse_tick.emit(global_position, urgency)
+		_next_fuse_tick = maxf(fuse_remaining - lerpf(0.24, 0.09, urgency), 0.0)
 	if fuse_remaining <= 0.0:
 		explode_now()
 		return

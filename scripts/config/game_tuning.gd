@@ -22,15 +22,16 @@ const PLAYER_LANDING_OVERSHOOT := 1.06
 
 # Ground roll. The cooldown begins after the movement state finishes.
 const PLAYER_DOUBLE_TAP_WINDOW := 0.25
-const PLAYER_ROLL_DURATION := 0.40
+const PLAYER_ROLL_DURATION := 0.30
 const PLAYER_ROLL_COOLDOWN := 0.50
-const PLAYER_ROLL_SPEED := PLAYER_MAX_SPEED * 2.0
+const PLAYER_ROLL_SPEED := 340.0
 
 # Player grenade. Charge time is one direction of the ping-pong meter.
 const PLAYER_GRENADE_COUNT := 3
 const GRENADE_CHARGE_CYCLE := 1.0
 const GRENADE_MIN_THROW_SPEED := 340.0
 const GRENADE_MAX_THROW_SPEED := 820.0
+const GRENADE_HORIZONTAL_VELOCITY_INHERIT := 0.25
 const GRENADE_GRAVITY := 1200.0
 const GRENADE_FUSE := 1.70
 const GRENADE_BOUNCE_DAMPING := 0.56
@@ -38,6 +39,8 @@ const GRENADE_MAX_BOUNCES := 5
 const GRENADE_RADIUS := 110.0
 const GRENADE_DAMAGE := 80
 const GRENADE_KNOCKBACK := 360.0
+const GRENADE_EDGE_DAMAGE_MULTIPLIER := 0.55
+const BOSS_RESUPPLY_GRENADES := 2
 
 # Weapon and damage.
 const WEAPON_FIRE_INTERVAL := 0.085
