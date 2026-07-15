@@ -3,6 +3,7 @@ extends SceneTree
 const REQUIRED_ACTIONS: Array[StringName] = [
 	&"move_left",
 	&"move_right",
+	&"sprint",
 	&"aim_up",
 	&"aim_down",
 	&"jump",
@@ -33,11 +34,13 @@ func _init() -> void:
 	for action in REQUIRED_ACTIONS:
 		if not _has_keyboard_or_mouse_binding(action):
 			failures.append("input action has no keyboard/mouse binding: %s" % action)
-	for action in REQUIRED_ACTIONS.filter(func(action: StringName) -> bool: return action not in [&"debug_toggle", &"weapon_1", &"weapon_2", &"weapon_3", &"weapon_4"]):
+	for action in REQUIRED_ACTIONS.filter(func(action: StringName) -> bool: return action not in [&"sprint", &"debug_toggle", &"weapon_1", &"weapon_2", &"weapon_3", &"weapon_4"]):
 		if not _has_gamepad_binding(action):
 			failures.append("input action has no gamepad binding: %s" % action)
 	if not _has_physical_key(&"debug_toggle", KEY_F3):
 		failures.append("debug_toggle must be bound to F3")
+	if not _has_key_location(&"sprint", KEY_SHIFT, KEY_LOCATION_LEFT) or not _has_key_location(&"sprint", KEY_SHIFT, KEY_LOCATION_RIGHT):
+		failures.append("sprint must be bound to Left Shift and Right Shift")
 	if int(ProjectSettings.get_setting("rendering/textures/canvas_textures/default_texture_filter", -1)) != 0:
 		failures.append("canvas texture filtering must use nearest")
 	if not bool(ProjectSettings.get_setting("rendering/2d/snap/snap_2d_transforms_to_pixel", false)):
@@ -85,5 +88,12 @@ func _has_gamepad_binding(action: StringName) -> bool:
 func _has_physical_key(action: StringName, key: Key) -> bool:
 	for event in InputMap.action_get_events(action):
 		if event is InputEventKey and event.physical_keycode == key:
+			return true
+	return false
+
+
+func _has_key_location(action: StringName, key: Key, location: KeyLocation) -> bool:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventKey and event.physical_keycode == key and event.location == location:
 			return true
 	return false

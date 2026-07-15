@@ -163,6 +163,14 @@ Roll/grenade refinement and encounter-adaptation pass completed 2026-07-15:
 - First contact now teaches one readable gunner before a compact three-assault wave. Short world-compatible prompts dismiss after the first roll or grenade explosion; one +1 route pickup and a two-grenade Boss-cache top-up remain finite.
 - The primary verifier now includes deterministic roll duration/distance/cooldown and low/mid/high throw-distance measurements. Full combat, environment, audio, restart, Boss, and scripted-playthrough gates remain green; subjective double-tap comfort, grenade hit rate against live enemies, and human mission difficulty remain the stage gate.
 
+Shift sprint and stamina pass completed 2026-07-15:
+
+- `sprint` is an InputMap action bound to left/right Shift. Grounded horizontal input reaches 468 px/s (1.80x the unchanged 260 px/s normal speed) with separate 2100 acceleration and 2400 post-sprint deceleration.
+- Stamina is centralized at 100 maximum, 28/s drain, 22/s recovery, 0.60-second delay, and a 20-point exhausted restart gate. Drain uses real post-collision displacement, so standing, opposing inputs, air time, pause, controlled states, and wall contact do not waste stamina.
+- Sprint cannot shoot or switch weapons. Fire, grenade charge, roll, hurt, death, focus loss, and disabled controls end it immediately; safe reload cancellation preserves current ammo. Rolls retain projectile evade and remain stamina-independent, while sprint has no invulnerability.
+- Visual-only SprintStart/Loop/Stop poses lean the body without rotating or resizing the 34x64 physics body. The weapon is stowed, footsteps accelerate, small pixel dust trails appear, and the independent world-space bar retracts from right to left before fading after full recovery.
+- Camera movement look gains a smooth, bounded 38 px sprint extension while preserving the 20,000 px level clamp. `player_sprint_stamina_test.gd`, captured sprint frames, the mixed-weapon PVE run, and the full verifier are the acceptance gates. No survival-mode runtime currently exists, so Roguelite/survival additions remain deferred.
+
 ## Phase gates
 
 ### Phase 0 — Project audit, technical baseline, and diagnostics

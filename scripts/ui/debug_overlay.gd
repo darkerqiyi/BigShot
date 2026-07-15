@@ -9,6 +9,10 @@ var _last_input_kind := "keyboard/mouse"
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	if not OS.is_debug_build():
+		visible = false
+		set_process(false)
+		return
 	_update_readout()
 
 
@@ -32,7 +36,7 @@ func _update_readout() -> void:
 		return
 	var viewport_size := get_viewport().get_visible_rect().size
 	var active_actions: Array[String] = []
-	for action in [&"move_left", &"move_right", &"jump", &"fire", &"reload", &"weapon_1", &"weapon_2", &"weapon_3", &"weapon_4", &"restart"]:
+	for action in [&"move_left", &"move_right", &"sprint", &"jump", &"fire", &"reload", &"weapon_1", &"weapon_2", &"weapon_3", &"weapon_4", &"restart"]:
 		if Input.is_action_pressed(action):
 			active_actions.append(action)
 	var player_snapshot := {
@@ -66,6 +70,15 @@ func _update_readout() -> void:
 		"grenade_count": 0,
 		"grenade_throws": 0,
 		"predicted_throw_velocity": Vector2.ZERO,
+		"is_sprinting": false,
+		"current_stamina": 0.0,
+		"max_stamina": 0.0,
+		"drain_rate": 0.0,
+		"regen_delay_remaining": 0.0,
+		"regen_rate": 0.0,
+		"exhausted": false,
+		"current_move_speed": 0.0,
+		"sprint_block_reason": &"unknown",
 	}
 	if player != null and player.has_method("get_debug_snapshot"):
 		player_snapshot = player.get_debug_snapshot()
@@ -122,6 +135,18 @@ func _update_readout() -> void:
 		int(player_snapshot["grenade_throws"]),
 		predicted_velocity.x,
 		predicted_velocity.y,
+	]
+	readout.text += "\n\nSPRINT: %s  exhausted %s\nStamina: %.1f / %.1f  drain %.1f/s\nRegen delay: %.3fs  rate %.1f/s\nMove speed: %.1f  grounded %s\nBlock: %s" % [
+		"ACTIVE" if player_snapshot["is_sprinting"] else "idle",
+		"yes" if player_snapshot["exhausted"] else "no",
+		float(player_snapshot["current_stamina"]),
+		float(player_snapshot["max_stamina"]),
+		float(player_snapshot["drain_rate"]),
+		float(player_snapshot["regen_delay_remaining"]),
+		float(player_snapshot["regen_rate"]),
+		float(player_snapshot["current_move_speed"]),
+		"yes" if player_snapshot["grounded"] else "no",
+		str(player_snapshot["sprint_block_reason"]),
 	]
 	var telemetry := get_node_or_null("../RunTelemetry")
 	if telemetry != null and telemetry.has_method("get_snapshot"):

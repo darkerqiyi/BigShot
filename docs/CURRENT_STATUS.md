@@ -38,6 +38,8 @@ Last updated: 2026-07-15 (Asia/Shanghai)
 
 **Roll/grenade refinement, reliability, and encounter adaptation — Pass for executable gates; human feel remains Partial.** The measured roll was shortened from 216.7 px to 107.7 px while preserving its exact post-action 0.50-second cooldown. Cooldown input caching, focused-UI input, grenade-cancel roll, safe grenade spawn, collision-truncated trajectory preview, partial movement inheritance, fuse warning, edge falloff, debug telemetry, finite resupply, and two short opening lessons are now covered by executable checks. Subjective double-tap comfort and live grenade hit rate remain human acceptance work.
 
+**Shift sprint and stamina — Pass for executable and captured visual gates; human/survival acceptance remains Partial.** Grounded Shift+A/D reaches 468 px/s (1.80x normal), drains 28 stamina/s only on real movement, exits at zero, waits 0.60 seconds before 22 stamina/s recovery, and requires 20% recovery after exhaustion. SprintStart/Loop/Stop are visual-only poses under `PlayerVisual`; the physics body never rotates. A world-space pixel stamina bar retracts from right to left and fades after full recovery. Shooting, reload, weapon selection, grenade, roll, jump, hurt, death, pause, focus, camera, walls, gates, and restart contracts are covered by `player_sprint_stamina_test.gd`. The current checkout has no playable survival-mode scene or runtime state, so survival-loop balance remains unverified rather than simulated.
+
 This does not mean every production roadmap phase is complete. Detailed crouch acceptance, formal camera tuning, human loudness/fatigue evaluation, checkpoints outside the Boss retry point, production sprite sheets, and measured human balance remain future work.
 
 ## Pre-change baseline
@@ -50,6 +52,7 @@ This does not mean every production roadmap phase is complete. Detailed crouch a
 ## Playable loop now implemented
 
 - Move with keyboard or controller; jump with full-height and early-release behavior.
+- Hold Shift with horizontal input for a grounded 1.80x sprint governed by a local stamina/exhaustion gate and world-space pixel bar.
 - Aim with mouse or right stick; hold the auto rifle trigger or point-fire the three semi-automatic weapons.
 - Original layered pixel player with separate shadow, body, arms, weapon pivot, active muzzle, and effects; facing is redrawn without negative node scaling.
 - Four per-weapon magazines, manual/empty reload, distinct pixel muzzle flash/recoil/tracer silhouettes, and bounded decorative casings.
@@ -64,7 +67,7 @@ This does not mean every production roadmap phase is complete. Detailed crouch a
 - Compact screen-space pixel HUD for portrait/health/ammo, four switch slots with reduced inactive detail, secondary score, time-bounded objective/control hints, mission notices, and mouse crosshair.
 - Signal-driven Boss panel with immediate and delayed damage layers, integrated 65%/30% markers, concise current-phase text, one-shot transition toast, and shared pixel-styled pause, death, and settlement overlays.
 - Original procedural level/Boss music and role-routed weapon, combat, enemy, Boss, player, and UI cues with bounded concurrency; the pause panel controls Master/Music/SFX without losing the chosen mix on scene restart.
-- F3 diagnostics retain movement/weapon data and add current shake scale, last feedback profile, accepted requests, and merged requests.
+- F3 diagnostics retain movement/weapon data and add sprint state, stamina/drain/regen values, exhaustion, current speed, grounded state, block reason, current shake scale, and feedback aggregation.
 
 ## Combat presentation implementation
 

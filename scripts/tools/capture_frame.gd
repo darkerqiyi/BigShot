@@ -76,6 +76,16 @@ func _capture() -> void:
 			enemy.set_physics_process(false)
 	elif mode == "pause":
 		game.hud.toggle_pause()
+	elif mode == "sprint":
+		game.player.global_position = Vector2(1180, 552)
+		game.player._using_mouse_aim = false
+		game.player.aim_direction = Vector2.RIGHT
+		game.player._invulnerability_remaining = 100.0
+		for enemy in game.enemies.get_children():
+			enemy.set_physics_process(false)
+			enemy.visible = false
+		Input.action_press("move_right")
+		Input.action_press("sprint")
 	elif mode in ["enemy_showcase", "enemy_telegraphs"]:
 		game.player.global_position = Vector2(9000, 552)
 		for kind in ["assault", "gunner", "shield", "elite"]:
@@ -144,9 +154,9 @@ func _capture() -> void:
 		game._spawn_impact(Vector2(1410, 500), Color("ff8b58"), 1.0, false, &"guard_break", Vector2.UP, 0.032)
 		game._spawn_impact(Vector2(1550, 500), Color("e65345"), 0.9, true, &"kill_heavy", Vector2.UP, 0.032)
 	var is_boss_mode := mode == "boss" or mode.begins_with("boss_")
-	var capture_frames := (90 if mode == "boss_settlement" else (30 if mode == "boss_death" else 24)) if is_boss_mode else (90 if mode in ["enemies", "enemy_showcase", "enemy_telegraphs"] else (1 if mode in ["rifle", "shotgun", "sniper", "pistol", "impact_tiers"] else 8))
+	var capture_frames := (90 if mode == "boss_settlement" else (30 if mode == "boss_death" else 24)) if is_boss_mode else (90 if mode in ["enemies", "enemy_showcase", "enemy_telegraphs"] else (24 if mode == "sprint" else (1 if mode in ["rifle", "shotgun", "sniper", "pistol", "impact_tiers"] else 8)))
 	for _frame in range(capture_frames):
-		if is_boss_mode or mode in ["enemies", "enemy_showcase", "enemy_telegraphs"]:
+		if is_boss_mode or mode in ["sprint", "enemies", "enemy_showcase", "enemy_telegraphs"]:
 			await physics_frame
 		else:
 			await process_frame
@@ -168,6 +178,8 @@ func _capture() -> void:
 		game.hud.weapon_rack.get_global_rect(),
 		game.hud.boss_panel.get_global_rect(),
 	])
+	Input.action_release("move_right")
+	Input.action_release("sprint")
 	game.queue_free()
 	await process_frame
 	quit(0)

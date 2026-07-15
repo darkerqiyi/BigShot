@@ -13,6 +13,7 @@ Advance through a 20,000 px arcade mission with four gated sectors and eleven mi
 ## Controls
 
 - Move: `A` / `D` or arrow keys; controller left stick
+- Sprint: hold left or right `Shift` with horizontal movement; stamina recovers after a short delay
 - Ground roll: double-tap `A` or `D` (projectile evade; does not avoid melee or environment damage)
 - Jump: `Space`; controller south face button
 - Aim: mouse; controller right stick

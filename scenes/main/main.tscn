@@ -231,7 +231,7 @@ player_path = NodePath("../World/Player")
 offset_left = 875.0
 offset_top = 92.0
 offset_right = 1256.0
-offset_bottom = 465.0
+offset_bottom = 684.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_debug")
 
 [node name="Margin" type="MarginContainer" parent="DebugOverlay/Panel"]

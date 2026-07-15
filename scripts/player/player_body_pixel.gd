@@ -32,6 +32,9 @@ func _draw() -> void:
 	if pose == &"roll":
 		_draw_roll()
 		return
+	if pose in [&"sprint_start", &"sprint", &"sprint_stop"]:
+		_draw_sprint()
+		return
 	var body_bob := 0
 	if pose == &"idle":
 		body_bob = 1 if sin(phase * 2.2) > 0.55 else 0
@@ -137,6 +140,35 @@ func _draw_roll() -> void:
 	_pixel_rect(-11, -5, 22, 8, GOLD)
 	_pixel_rect(-9, 5, 18, 7, DEEP)
 	_pixel_rect(4, -11, 8, 6, VISOR)
+
+
+func _draw_sprint() -> void:
+	var lean := 3 if pose == &"sprint_start" else (6 if pose == &"sprint" else 2)
+	var stride := 7 if sin(phase * 1.15) >= 0.0 else -7
+	# Feet remain on the same baseline while torso and head shift forward.
+	_pixel_rect(-13 + stride, 13, 10, 16, INK)
+	_pixel_rect(-11 + stride, 13, 6, 10, SUIT_DARK)
+	_pixel_rect(-15 + stride, 24, 14, 5, DEEP)
+	_pixel_rect(3 - stride, 13, 10, 16, INK)
+	_pixel_rect(5 - stride, 13, 6, 10, SUIT_DARK)
+	_pixel_rect(1 - stride, 24, 14, 5, DEEP)
+	_pixel_rect(-14 + lean, -8, 30, 24, INK)
+	_pixel_rect(-11 + lean, -6, 24, 18, SUIT)
+	_pixel_rect(-9 + lean, 7, 20, 6, SUIT_DARK)
+	_pixel_rect(-1 + lean, -6, 5, 18, GOLD)
+	_pixel_rect(-13 + lean, -3, 7, 15, SUIT_LIGHT)
+	_pixel_rect(8 + lean, -3, 6, 15, DEEP)
+	_pixel_rect(-12 + lean * 2, -29, 28, 22, INK)
+	_pixel_rect(-9 + lean * 2, -27, 22, 17, FACE)
+	_pixel_rect(-14 + lean * 2, -33, 30, 10, INK)
+	_pixel_rect(-11 + lean * 2, -31, 24, 7, SUIT)
+	_pixel_rect(-6 + lean * 2, -22, 20, 7, INK)
+	_pixel_rect(-4 + lean * 2, -20, 16, 4, VISOR)
+	_pixel_rect(-13 + lean, -10, 26, 4, GOLD)
+	_pixel_rect(-22, -8, 11, 4, GOLD)
+	_pixel_rect(-27, -5, 9, 4, Color("f49a36"))
+	if hurt_strength > 0.0:
+		_draw_hurt_highlight(0)
 
 
 func _pixel_rect(x: int, y: int, width: int, height: int, color: Color) -> void:
