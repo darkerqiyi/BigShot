@@ -75,7 +75,7 @@ func _test_visibility_and_concurrency(game: Node) -> void:
 
 
 func _test_encounter_sequence_and_resupply(game: Node) -> void:
-	game.player.global_position.x = 5400.0
+	game.player.global_position.x = 3000.0
 	game._process(0.0)
 	_expect(game._active_mission_encounter == 0 and game.mission_gate.closed and game.mission_gate.collision_layer == 1, "first major encounter did not lock its forward boundary")
 	var gate_shape := game.mission_gate.get_child(0) as CollisionShape2D
@@ -84,12 +84,12 @@ func _test_encounter_sequence_and_resupply(game: Node) -> void:
 	game.player.global_position.x = game.BOSS_ENTRY_X + 20.0
 	game._process(0.0)
 	_expect(game.run_state == "combat" and not game.boss.active, "player could start the Boss before clearing the gated mission")
-	game.player.global_position.x = 5400.0
+	game.player.global_position.x = 3000.0
 	var stranded: Node = game.enemies.get_child(0)
 	stranded.global_position = Vector2(1200, 760)
 	game._encounter_stall_elapsed = game.ENCOUNTER_STALL_REPOSITION_TIME
 	game._process(0.0)
-	_expect(stranded.global_position.x >= 5320.0 and stranded.global_position.y == 552.0, "offscreen encounter recovery did not return a stranded enemy to the combat sector")
+	_expect(stranded.global_position.x >= 2950.0 and stranded.global_position.y == 552.0, "offscreen encounter recovery did not return a stranded enemy to the combat sector")
 	_clear_active_wave(game)
 	_expect(game._next_wave_delay > 0.6 and game.mission_gate.closed, "next wave was not queued while the route remained locked")
 	game._process(0.69)

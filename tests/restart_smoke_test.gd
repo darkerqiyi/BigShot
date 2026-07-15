@@ -1,6 +1,7 @@
 extends SceneTree
 
 const WeaponData := preload("res://scripts/weapons/weapon_catalog.gd")
+const Tuning := preload("res://scripts/config/game_tuning.gd")
 
 
 func _init() -> void:
@@ -54,6 +55,9 @@ func _run() -> void:
 	if restarted_player.current_weapon_id != &"rifle" or restarted_player.ammo != restarted_player.MAGAZINE_SIZE:
 		_fail("restarted scene did not restore default rifle weapon state")
 		return
+	if restarted_player.grenade_count != Tuning.PLAYER_GRENADE_COUNT or current_scene.grenades.get_child_count() != 0:
+		_fail("restarted scene did not restore grenade inventory or clear old grenades")
+		return
 	var restarted_boss := current_scene.get_node_or_null("World/Boss")
 	var restarted_hud := current_scene.get_node_or_null("HUD")
 	if restarted_boss == null or not restarted_boss.active or restarted_boss.phase != 1 or restarted_boss.health != restarted_boss.MAX_HEALTH or not restarted_hud.boss_panel.visible:
@@ -82,7 +86,7 @@ func _run() -> void:
 		return
 	current_scene.sfx.set_bus_level(&"Music", 72)
 	current_scene.sfx.toggle_bus_mute(&"SFX")
-	print("RESTART_SMOKE_PASS phase-two death restored a clean full-resupply Boss checkpoint in %dms, phase-one Boss/HUD/arena, no dangers, retained session audio mix" % restart_elapsed)
+	print("RESTART_SMOKE_PASS phase-two death restored a clean full-resupply Boss checkpoint in %dms, phase-one Boss/HUD/arena, no dangers or grenades, retained session audio mix" % restart_elapsed)
 	quit(0)
 
 

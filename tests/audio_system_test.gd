@@ -52,6 +52,7 @@ func _test_cue_catalog(audio: Node) -> void:
 		&"shield_block", &"guard_break", &"enemy_warning", &"elite_warning", &"enemy_hurt", &"enemy_hurt_heavy",
 		&"assault_swing", &"shield_bash", &"elite_attack", &"elite_step", &"player_hurt",
 		&"player_death", &"jump", &"footstep", &"heavy_land", &"low_health",
+		&"roll", &"grenade_throw", &"grenade_bounce", &"grenade_explosion", &"grenade_empty",
 		&"boss_intro", &"boss_land", &"boss_phase_2", &"boss_phase_3", &"boss_charge_release", &"boss_area_release",
 		&"boss_warning_volley", &"boss_warning_charge", &"boss_warning_area", &"boss_failure", &"boss_explosion", &"boss_core_off", &"boss_death",
 		&"ui_hover", &"ui_pause", &"ui_resume", &"mission_complete",
@@ -66,6 +67,7 @@ func _test_cue_catalog(audio: Node) -> void:
 	_expect(float(shotgun["synth"][1]) > float(rifle["synth"][1]) and float(sniper["synth"][1]) > float(pistol["synth"][1]), "four weapons do not retain distinct transient lengths")
 	_expect(float(shotgun["volume"]) > float(rifle["volume"]) and float(sniper["volume"]) > float(pistol["volume"]), "heavy weapons are not prioritized over sustained/light fire")
 	_expect(audio.get_cue_profile(&"boss_warning_charge")["bus"] == &"Boss" and audio.get_cue_profile(&"enemy_warning")["bus"] == &"Enemies", "Boss and enemy warnings are not independently mixable")
+	_expect(audio.get_cue_profile(&"grenade_explosion")["bus"] == &"Weapons" and audio.get_cue_profile(&"grenade_empty")["bus"] == &"UI", "grenade combat and empty cues escaped their intended buses")
 	for cue in [&"rifle", &"shotgun", &"sniper", &"pistol", &"impact_heavy", &"boss_death"]:
 		var peak := _stream_peak(audio._streams[cue] as AudioStreamWAV)
 		_expect(peak > 0.04 and peak <= 0.80, "%s source peak is silent or clipping: %.3f" % [cue, peak])

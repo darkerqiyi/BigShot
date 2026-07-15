@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/weapons/weapon_inventory.gd" id="2_inventory"]
@@ -6,6 +6,8 @@
 [ext_resource type="Script" path="res://scripts/player/player_body_pixel.gd" id="4_body"]
 [ext_resource type="Script" path="res://scripts/player/player_weapon_pixel.gd" id="5_weapon"]
 [ext_resource type="Script" path="res://scripts/effects/pixel_muzzle_flash.gd" id="6_flash"]
+[ext_resource type="Script" path="res://scripts/player/grenade_charge_indicator.gd" id="7_charge"]
+[ext_resource type="Script" path="res://scripts/player/grenade_trajectory_preview.gd" id="8_trajectory"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
 size = Vector2(34, 64)
@@ -54,6 +56,14 @@ script = ExtResource("6_flash")
 
 [node name="VisualEffects" type="Node2D" parent="PlayerVisual"]
 z_index = 4
+
+[node name="GrenadeChargeIndicator" type="Node2D" parent="."]
+visible = false
+script = ExtResource("7_charge")
+
+[node name="GrenadeTrajectoryPreview" type="Node2D" parent="."]
+visible = false
+script = ExtResource("8_trajectory")
 
 [node name="WeaponInventory" type="Node" parent="."]
 script = ExtResource("2_inventory")

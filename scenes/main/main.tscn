@@ -113,61 +113,61 @@ position = Vector2(20016, 360)
 shape = SubResource("RectangleShape2D_wall")
 
 [node name="PlatformA" type="StaticBody2D" parent="World"]
-position = Vector2(1600, 481)
+position = Vector2(1600, 507)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformA"]
 shape = SubResource("RectangleShape2D_platform_a")
 
 [node name="PlatformB" type="StaticBody2D" parent="World"]
-position = Vector2(3000, 436)
+position = Vector2(3000, 503)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformB"]
 shape = SubResource("RectangleShape2D_platform_b")
 
 [node name="PlatformC" type="StaticBody2D" parent="World"]
-position = Vector2(4500, 486)
+position = Vector2(4500, 511)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformC"]
 shape = SubResource("RectangleShape2D_platform_c")
 
 [node name="PlatformD" type="StaticBody2D" parent="World"]
-position = Vector2(6200, 421)
+position = Vector2(6200, 502)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformD"]
 shape = SubResource("RectangleShape2D_platform_d")
 
 [node name="PlatformE" type="StaticBody2D" parent="World"]
-position = Vector2(8200, 481)
+position = Vector2(8200, 507)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformE"]
 shape = SubResource("RectangleShape2D_platform_a")
 
 [node name="PlatformF" type="StaticBody2D" parent="World"]
-position = Vector2(9400, 436)
+position = Vector2(9400, 503)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformF"]
 shape = SubResource("RectangleShape2D_platform_b")
 
 [node name="PlatformG" type="StaticBody2D" parent="World"]
-position = Vector2(11600, 486)
+position = Vector2(11600, 511)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformG"]
 shape = SubResource("RectangleShape2D_platform_c")
 
 [node name="PlatformH" type="StaticBody2D" parent="World"]
-position = Vector2(14500, 421)
+position = Vector2(14500, 502)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformH"]
 shape = SubResource("RectangleShape2D_platform_d")
 
 [node name="PlatformI" type="StaticBody2D" parent="World"]
-position = Vector2(16600, 481)
+position = Vector2(16600, 507)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformI"]
 shape = SubResource("RectangleShape2D_platform_a")
 
 [node name="PlatformJ" type="StaticBody2D" parent="World"]
-position = Vector2(18400, 436)
+position = Vector2(18400, 503)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformJ"]
 shape = SubResource("RectangleShape2D_platform_b")
@@ -181,6 +181,8 @@ position = Vector2(230, 552)
 position = Vector2(19000, 520)
 
 [node name="Projectiles" type="Node2D" parent="World"]
+
+[node name="Grenades" type="Node2D" parent="World"]
 
 [node name="Effects" type="Node2D" parent="World"]
 

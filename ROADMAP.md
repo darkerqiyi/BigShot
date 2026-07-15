@@ -139,12 +139,20 @@ Difficulty, pacing, and automated acceptance pass completed 2026-07-15:
 
 Complete arcade mission expansion completed 2026-07-15:
 
-- The playable route expands from the original 4300 px/9-enemy layout to a 20,000 px mission with a roughly 19-second minimum traversal before first contact, four major gated sectors, eleven waves, and 28 regular enemies before the existing Boss.
+- The playable route expands from the original 4300 px/9-enemy layout to a 20,000 px mission with a 10-second minimum traversal before first contact, four major gated sectors, eleven waves, and 28 regular enemies before the existing Boss.
 - The sectors teach mixed close/ranged pressure, platform-and-sniper sightlines, shield displacement, and an elite-centered climax. Forward energy gates close only for major encounters and reopen immediately after the final wave.
 - Enemy waves are created only after their authored trigger. A 30-second no-kill watchdog repositions surviving progress enemies into the readable combat area instead of killing them, preventing screen-off permanent locks without shortening healthy encounters.
 - Four field supplies, three warned spike strips, and two vertical moving platforms add recovery and traversal variation without an inventory, progression system, or new enemy/weapon type. The pre-Boss cache is deliberately limited to +45 health and a 60% magazine floor.
 - Settlement now reports rank, time, score, kills, accuracy, hits taken, and remaining health using existing run data, with replay and exit choices. Boss-checkpoint retry preserves mission statistics while fully resetting gameplay danger state.
-- The full mixed-weapon automation completes the expanded mission in 127.73 simulated seconds under test-only invulnerability and continuous optimal input. This proves end-to-end reachability, not the requested 5–8 minute human target; human first-run/skilled timing remains the stage gate.
+- The full mixed-weapon automation completes the expanded mission in 131.66 simulated seconds under test-only invulnerability, continuous combat input, and ordinary traversal jumps. This proves end-to-end reachability, not the requested 5–8 minute human target; human first-run/skilled timing remains the stage gate.
+
+Ground-roll, charged-grenade, and traversal-correction pass completed 2026-07-15:
+
+- Same-direction action-edge double taps within 0.25 seconds start a 0.40-second, 520 px/s ground roll. Direction is locked, world/gate collision remains active, and a 0.50-second cooldown begins only when the roll finishes.
+- Rolling cancels reload and fire, blocks weapon switching and grenade use, and ignores only damage classified as `projectile`. Melee, contact, explosion, and environment damage remain active; no player collision shape is disabled.
+- Holding/releasing the existing `throw_grenade` action charges a pixel world-space meter with a 1.0-second ping-pong cycle and throws one of three grenades at 340–820 px/s. Grenades use gravity, at most five damped bounces, a 1.70-second pause-safe fuse, one deduplicated 110 px/80-damage enemy-only explosion, and bounded audio/camera feedback.
+- First contact moved from x=5200 to x=2830 (10 seconds at the unchanged 260 px/s run speed). Static platform tops were lowered into the unchanged jump envelope; all three road hazards are now 72 px wide, with the second moved clear of a low platform.
+- `tests/player_combat_abilities_test.gd` and `tests/level_mobility_test.gd` lock input/state/damage/inventory/cleanup plus real platform and hazard traversal. The mixed-weapon runner now performs ordinary route jumps and reaches settlement in 131.66 simulated seconds.
 
 ## Phase gates
 

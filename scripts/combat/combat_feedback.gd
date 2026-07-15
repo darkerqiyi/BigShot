@@ -26,6 +26,7 @@ const PROFILES := {
 	&"boss_intro": {"shake": 0.34, "cap": 0.45, "hold": 0.0},
 	&"boss_phase": {"shake": 0.38, "cap": 0.50, "hold": 0.025},
 	&"boss_death": {"shake": 0.52, "cap": 0.70, "hold": 0.045},
+	&"grenade_explosion": {"shake": 0.22, "cap": 0.44, "hold": 0.025},
 	&"complete": {"shake": 0.25, "cap": 0.35, "hold": 0.0},
 }
 

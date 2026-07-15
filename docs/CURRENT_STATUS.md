@@ -32,7 +32,9 @@ Last updated: 2026-07-15 (Asia/Shanghai)
 
 **Difficulty, pacing, weapon-value, and automated full-run acceptance — Pass for executable gates; human acceptance remains Partial.** Debug-only telemetry established a pre-change baseline, the top three evidenced pacing/fairness issues were fixed, a mixed-weapon playthrough reaches settlement with all four weapons contributing, and the Boss checkpoint restores a clean playable state in about 1.6 seconds. New-player comprehension, expert exploits, physical-controller feel, and subjective difficulty still require people rather than scripted bots.
 
-**Complete arcade mission expansion — Pass for implementation and regression; Partial for human-duration acceptance.** The original 4300 px, nine-enemy route is now a 20,000 px mission with four gated sectors, eleven waves, 28 regular enemies, traversal variation, limited supplies, environmental hazards, moving platforms, the existing Boss, and a statistic-rich settlement. The invulnerable continuous-input automation reaches settlement in 127.73 simulated seconds; the requested first-run 5–8 minute and skilled 4–6 minute windows still require measured human sessions.
+**Complete arcade mission expansion — Pass for implementation and regression; Partial for human-duration acceptance.** The original 4300 px, nine-enemy route is now a 20,000 px mission with four gated sectors, eleven waves, 28 regular enemies, traversal variation, limited supplies, environmental hazards, moving platforms, the existing Boss, and a statistic-rich settlement. The invulnerable mixed-weapon automation reaches settlement in 131.66 simulated seconds; the requested first-run 5–8 minute and skilled 4–6 minute windows still require measured human sessions.
+
+**Ground roll, charged grenade, and traversal correction — Pass for executable gates; human feel remains Partial.** AA/DD ground rolls use the existing collision body while selectively evading projectile damage, and right-mouse charge throws one of three finite-bounce grenades through the existing damage/feedback paths. First contact now begins at the requested 10-second mark, elevated platforms are inside the unchanged jump envelope, and all road hazards pass real running-jump tests without forced damage. Roll cadence, throw-distance feel, and the grenade's effect on human difficulty still need hands-on acceptance.
 
 This does not mean every production roadmap phase is complete. Detailed crouch acceptance, formal camera tuning, human loudness/fatigue evaluation, checkpoints outside the Boss retry point, production sprite sheets, and measured human balance remain future work.
 
@@ -228,19 +230,26 @@ Modification baseline:
 
 Implemented structure:
 
-- The route is 20,000 px. At the unchanged maximum run speed, the 4970 px distance from spawn to the first trigger is at least 19.1 seconds before combat, providing the requested safe opening without a forced wait.
-- Four sectors use trigger positions at x=5200/7800/10800/13600 and forward gates at x=7500/10500/13300/16200. They contain 7/6/8/7 enemies across 3/2/3/3 waves and immediately reopen after their final wave.
+- The route is 20,000 px. At the unchanged maximum run speed, the 2600 px distance from spawn to the first trigger is exactly 10 seconds before combat, shortening the overlong opening without a forced wait or movement-speed change.
+- Four sectors use trigger positions at x=2830/7800/10800/13600 and forward gates at x=5200/10500/13300/16200. They contain 7/6/8/7 enemies across 3/2/3/3 waves and immediately reopen after their final wave.
 - The sectors progress from assault/gunner teaching, to elevated ranged pressure, to shield displacement, to an elite-centered climax. The existing two-telegraph cap and 520 px ranged readability rules remain unchanged.
 - A 30-second no-kill watchdog repositions all surviving progress enemies to readable ground positions. It was added after an expanded-run test exposed a real final-wave in-bounds path/line-of-fire stall; it never awards a kill or bypasses the wave.
-- Four pickups provide +20/+25 health or 35%/45% magazine floors. The Boss cache adds only 45 health and raises magazines to a 60% floor. Three warned spike strips and two vertical moving platforms provide limited environmental variation.
+- Four pickups provide +20/+25 health or 35%/45% magazine floors. The Boss cache adds only 45 health and raises magazines to a 60% floor. Three warned 72 px spike strips, ten reachable static platforms, and two vertical moving platforms provide limited environmental variation without changing jump physics.
 - Settlement uses existing counters for elapsed time, score, kills, projectile-based accuracy, damage events, rank, and remaining health. Boss-checkpoint reload retains those mission counters while fully resetting Boss, hazards, projectiles, HUD, music, and SFX.
 
 Measured post-change evidence:
 
-- The final automated run reached Boss combat at 115.11 seconds and settlement at 127.73 seconds. Encounter durations were 9.10/8.49/18.47/23.74 seconds; Boss phases were 2.44/5.83/4.34 seconds.
+- The post-ability automated run reached Boss combat at 118.82 seconds and settlement at 131.66 seconds. Encounter durations were 7.10/10.21/19.34/22.33 seconds; Boss phases were 2.63/5.88/4.33 seconds.
 - It defeated all 28 regular enemies, exercised all four weapon roles, recorded maximum three active enemies and one attacking enemy, and reached the existing settlement without a gate bypass.
-- This runner is deliberately invulnerable and applies continuous scripted movement/aim/fire, so 127.73 seconds is a throughput floor, not a human playtime claim. The authored timing targets are 350–460 seconds for a first clear and 240–360 seconds for a skilled clear.
-- Automated contracts prove the closed 720 px gate collides with the player route, the Boss cannot activate before mission completion, stalled enemies are recovered rather than deleted, supplies remain limited, and a Phase II Boss death restores a clean checkpoint in about 1.6 seconds.
+- This runner is deliberately invulnerable and applies scripted movement/aim/fire plus ordinary traversal jumps, so 131.66 seconds is a throughput floor, not a human playtime claim. The authored timing targets are 350–460 seconds for a first clear and 240–360 seconds for a skilled clear.
+- Automated contracts prove the closed 720 px gate collides with the player route, the Boss cannot activate before mission completion, first contact is 10 seconds from spawn, elevated platforms and every road hazard can be cleared with unchanged movement, stalled enemies are recovered rather than deleted, supplies remain limited, and a Phase II Boss death restores a clean checkpoint in about 1.6 seconds with no old grenade.
+
+## Roll and grenade implementation
+
+- Roll input is recognized from non-echo action press events, keeping left and right tap caches independent. The window is 0.25 seconds; roll lasts 0.40 seconds at 520 px/s (2× normal speed); cooldown is 0.50 seconds after completion.
+- Roll keeps terrain, gate, and arena collision active. `projectile` damage is discarded before hurt, knockback, flash, or ordinary invulnerability begins; melee, contact, explosion, and environment damage are not discarded. Death, pause, focus loss, and scene reload clear taps and transient state.
+- Grenade charge uses a 1.0-second ping-pong cycle. Charge maps to 340–820 px/s, with 1200 px/s² gravity, 0.56 bounce retention, five-bounce cap, and 1.70-second fuse. The 110 px explosion deals 80 once per enemy/Boss and 360 knockback, with no player self-damage in the current PVE mode.
+- Charge/trajectory cues stay in world space beside the player. Starting either ability cancels incompatible reload/fire behavior; roll and grenade are mutually exclusive. The HUD shows the three-grenade inventory without adding an equipment or progression system.
 
 ## Validation evidence
 
@@ -263,12 +272,14 @@ ENEMY_BOSS_PASS assault warning/recovery, gunner telegraph, shield front/opening
 ENEMY_VISUAL_PASS player 125% calibration, four role silhouettes, logic-driven locomotion/telegraph/attack/recover, gunner muzzle sync, shield block/break, elite stagger, death priority
 PIXEL_UI_PASS nearest/snap baseline, 720p/1080p/1440p/ultrawide anchors, avatar/icons, weapon/ammo, health, boss layers/phases, pause audio/death/settlement
 PLAYER_VISUAL_PASS separated physics/visuals, idle/run/jump/fall/land/hurt/death, bidirectional aim, four silhouettes/recoil profiles, muzzle-origin sync, restart reset
+PLAYER_ABILITIES_PASS roll input/collision/projectile evade/cooldown plus grenade charge/ping-pong/trajectory/physics/single-hit damage/inventory/pause/death cleanup
 COMBAT_FEEDBACK_PASS four pixel fire signatures, capped/optional shake, merged shotgun response, hit tiers, local hold, casing cleanup, unchanged balance
 ENVIRONMENT_VISUAL_PASS pixel sky/far/mid/play/front layers, exact collision/platform/encounter contracts, bounded foreground, snapped scrolling, no smooth world primitives
+LEVEL_MOBILITY_PASS 10-second opening contract, reachable elevated platform, three normally jumpable road hazards
 BOSS_VISUAL_PASS layered industrial silhouette, exact collision/muzzles, three visual phases, logic-driven telegraphs, local hurt, one-shot death
 BOSS_UI_FLOW_PASS intro/title timing, pause-safe fade, active hierarchy, one-shot phase toasts, integrated thresholds, defeat exit, compact HUD, control auto-hide
 AUDIO_SYSTEM_PASS eight buses, Master limiter, original level/Boss loops, four weapon signatures and reload layers, spatial semantic combat/Boss/UI cues, bounded 20-voice pool, pause mix controls and semantic duck
-RESTART_SMOKE_PASS phase-two death restored a clean full-resupply Boss checkpoint in under 3s, phase-one Boss/HUD/arena, no dangers, retained session audio mix
+RESTART_SMOKE_PASS phase-two death restored a clean full-resupply Boss checkpoint in about 1.6s, phase-one Boss/HUD/arena, no dangers or grenades, retained session audio mix
 COMBAT_PACING_PASS four gated multi-wave sectors, immediate unlock, stall recovery, two-telegraph cap, 520px readability, limited Boss cache
 SCRIPTED_PLAYTHROUGH_PASS expanded mission, four active weapon roles, gated waves, debug telemetry summary, encounter/Boss timings
 PROTOTYPE_VERIFY_PASS regression, combat pacing, mixed-weapon playthrough, and 120-frame runtime checks passed
@@ -352,7 +363,7 @@ Objective: advance through four gated sectors and eleven waves, use the traversa
 - Mouse aiming, camera look-ahead, projectile speed, difficulty, and the authored first-run 5–8 minute/skilled 4–6 minute completion targets need human playtesting and tuning.
 - Controller bindings are defined but have not been verified on a physical controller.
 - Final weapon loudness, shotgun/rail-lance impulse comfort, pixel-flash brightness, and moving/airborne readability require hands-on comparison; automated tests verify bounds and state, not subjective comfort.
-- Crouching, grenades, general checkpoints, saved progress, production sprite sheets, and broader content variety are not implemented.
+- Crouching, general checkpoints, saved progress, production sprite sheets, and broader content variety are not implemented. Grenades are intentionally limited to three per restart and do not introduce inventory or pickups yet.
 - Enemies use direct horizontal pursuit rather than navigation, cover selection, or sophisticated platform traversal.
 - No Git baseline commit exists yet.
 - Engine-default font rendering remains a replaceable placeholder. Generated audio/music, shared styles, palette, avatar, layered player/four weapons, four enemy roles, combat effects, complete layered environment, and Iron Tempest procedural Boss are project-authored original prototype assets; audio can later be replaced with mastered recordings without changing event calls.

@@ -57,8 +57,15 @@ func _run() -> void:
 				Input.action_release("jump")
 		else:
 			Input.action_release("fire")
-			Input.action_release("jump")
 			_set_move(1.0 if game.run_state in ["combat", "boss_ready"] else 0.0)
+			# The expanded route now contains intentionally reachable platform lips and
+			# jumpable road hazards. Exercise normal traversal rather than assuming a
+			# perfectly flat autorun corridor between encounters.
+			if jump_clock >= 1.15 and game.run_state in ["combat", "boss_ready"]:
+				Input.action_press("jump")
+				jump_clock = 0.0
+			else:
+				Input.action_release("jump")
 		await physics_frame
 		if frame_count > 15000:
 			break

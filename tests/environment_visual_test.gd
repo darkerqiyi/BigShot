@@ -28,16 +28,16 @@ func _test_world_collision_contract(game: Node) -> void:
 	var floor_shape := floor.get_node("CollisionShape2D").shape as RectangleShape2D
 	_expect(floor.position == Vector2(10000, 640) and floor_shape.size == Vector2(20000, 112), "expanded mission floor collision is incorrect")
 	var expected_platforms := {
-		"PlatformA": [Vector2(1600, 481), Vector2(260, 22)],
-		"PlatformB": [Vector2(3000, 436), Vector2(300, 22)],
-		"PlatformC": [Vector2(4500, 486), Vector2(250, 22)],
-		"PlatformD": [Vector2(6200, 421), Vector2(280, 22)],
-		"PlatformE": [Vector2(8200, 481), Vector2(260, 22)],
-		"PlatformF": [Vector2(9400, 436), Vector2(300, 22)],
-		"PlatformG": [Vector2(11600, 486), Vector2(250, 22)],
-		"PlatformH": [Vector2(14500, 421), Vector2(280, 22)],
-		"PlatformI": [Vector2(16600, 481), Vector2(260, 22)],
-		"PlatformJ": [Vector2(18400, 436), Vector2(300, 22)],
+		"PlatformA": [Vector2(1600, 507), Vector2(260, 22)],
+		"PlatformB": [Vector2(3000, 503), Vector2(300, 22)],
+		"PlatformC": [Vector2(4500, 511), Vector2(250, 22)],
+		"PlatformD": [Vector2(6200, 502), Vector2(280, 22)],
+		"PlatformE": [Vector2(8200, 507), Vector2(260, 22)],
+		"PlatformF": [Vector2(9400, 503), Vector2(300, 22)],
+		"PlatformG": [Vector2(11600, 511), Vector2(250, 22)],
+		"PlatformH": [Vector2(14500, 502), Vector2(280, 22)],
+		"PlatformI": [Vector2(16600, 507), Vector2(260, 22)],
+		"PlatformJ": [Vector2(18400, 503), Vector2(300, 22)],
 	}
 	for platform_name in expected_platforms:
 		var platform := game.get_node("World/%s" % platform_name) as StaticBody2D
@@ -54,8 +54,8 @@ func _test_encounter_contract(game: Node) -> void:
 	_expect(game.enemies.get_child_count() == 0, "mission enemies spawned before their authored sector trigger")
 	_expect(game.MISSION_ENCOUNTERS.size() == 4, "expanded mission does not contain four major gated encounters")
 	var expected_counts := [7, 6, 8, 7]
-	var expected_triggers := [5200.0, 7800.0, 10800.0, 13600.0]
-	var expected_gates := [7500.0, 10500.0, 13300.0, 16200.0]
+	var expected_triggers := [2830.0, 7800.0, 10800.0, 13600.0]
+	var expected_gates := [5200.0, 10500.0, 13300.0, 16200.0]
 	for index in range(game.MISSION_ENCOUNTERS.size()):
 		var encounter: Dictionary = game.MISSION_ENCOUNTERS[index]
 		var authored_count := 0
@@ -65,7 +65,16 @@ func _test_encounter_contract(game: Node) -> void:
 		_expect(float(encounter["trigger_x"]) == expected_triggers[index] and float(encounter["gate_x"]) == expected_gates[index], "encounter %d route bounds changed" % (index + 1))
 	_expect(game.FIRST_RUN_TARGET_SECONDS == Vector2i(350, 460) and game.SKILLED_TARGET_SECONDS == Vector2i(240, 360), "mission duration targets no longer match the 5–8/4–6 minute brief")
 	_expect(game.boss.global_position.distance_to(Vector2(19000, 520)) < 0.1, "Boss spawn does not match the expanded arena")
-	_expect((5200.0 - 230.0) / 260.0 >= 19.0, "opening safe run is shorter than the approximately 20-second target")
+	var opening_seconds := (2830.0 - 230.0) / 260.0
+	_expect(opening_seconds >= 9.9 and opening_seconds <= 10.1, "opening safe run no longer matches the requested 10-second target")
+	var jump_apex := 590.0 * 590.0 / (2.0 * 1800.0)
+	for platform_name in ["PlatformA", "PlatformB", "PlatformC", "PlatformD", "PlatformE", "PlatformF", "PlatformG", "PlatformH", "PlatformI", "PlatformJ"]:
+		var platform := game.get_node("World/%s" % platform_name) as StaticBody2D
+		var platform_shape := platform.get_node("CollisionShape2D").shape as RectangleShape2D
+		var platform_top: float = platform.position.y - platform_shape.size.y * 0.5
+		_expect(584.0 - platform_top <= jump_apex - 3.0, "%s remains above the player's reliable jump apex" % platform_name)
+	for hazard in game.get_tree().get_nodes_in_group("mission_hazards"):
+		_expect(float(hazard.strip_width) <= 72.0, "road hazard remains wider than the player's reliable running jump")
 	_expect(game.get_tree().get_nodes_in_group("mission_pickups").size() == 4, "expanded route is missing its four finite supply pickups")
 	_expect(game.get_tree().get_nodes_in_group("mission_hazards").size() == 3, "expanded route is missing readable environmental hazards")
 	_expect(game.get_tree().get_nodes_in_group("mission_platforms").size() == 2, "platform sector is missing its two moving platforms")

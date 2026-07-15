@@ -12,6 +12,11 @@ var animation_phase := 0.0
 var hurt_remaining := 0.0
 var death_elapsed := 0.0
 var is_dead := false
+var roll_progress := 0.0
+var roll_direction := 1
+var roll_ready_flash := 0.0
+var grenade_charge_value := 0.0
+var grenade_charging := false
 
 
 func configure_weapon(weapon_id: StringName, data: Dictionary) -> void:
@@ -23,16 +28,33 @@ func set_aim_direction(aim_direction: Vector2, facing: int) -> void:
 	weapon_pivot.set_aim(aim_direction, facing_direction)
 
 
-func update_pose(delta: float, player_velocity: Vector2, grounded: bool, movement_intent: float, aim_direction: Vector2, landing_remaining: float) -> void:
+func update_pose(delta: float, player_velocity: Vector2, grounded: bool, movement_intent: float, aim_direction: Vector2, landing_remaining: float, rolling: bool = false, current_roll_progress: float = 0.0, charging_grenade: bool = false, grenade_throw_remaining: float = 0.0, current_grenade_charge: float = 0.0) -> void:
 	animation_phase += delta * (4.0 + absf(player_velocity.x) * 0.035)
 	hurt_remaining = maxf(hurt_remaining - delta, 0.0)
 	weapon_pivot.update_animation(delta)
 	set_aim_direction(aim_direction, facing_direction)
+	roll_ready_flash = maxf(roll_ready_flash - delta, 0.0)
+	roll_progress = current_roll_progress if rolling else 0.0
+	roll_direction = facing_direction
+	grenade_charging = charging_grenade
+	grenade_charge_value = current_grenade_charge
 
 	if is_dead:
 		death_elapsed += delta
 		base_animation_state = &"death"
 		animation_state = &"death"
+		weapon_pivot.visible = false
+	elif rolling:
+		base_animation_state = &"roll"
+		animation_state = &"roll_start" if roll_progress < 0.18 else (&"roll_end" if roll_progress > 0.78 else &"roll")
+		weapon_pivot.visible = false
+	elif grenade_throw_remaining > 0.0:
+		base_animation_state = &"grenade_throw"
+		animation_state = &"grenade_throw"
+		weapon_pivot.visible = false
+	elif charging_grenade:
+		base_animation_state = &"grenade_charge"
+		animation_state = &"grenade_charge"
 		weapon_pivot.visible = false
 	else:
 		if landing_remaining > 0.0:
@@ -52,13 +74,14 @@ func update_pose(delta: float, player_velocity: Vector2, grounded: bool, movemen
 		weapon_pivot.visible = true
 
 	var bob := _body_bob()
-	body_sprite.position = Vector2.ZERO
-	body_sprite.rotation = lerpf(0.0, -1.18 * facing_direction, clampf(death_elapsed / 0.42, 0.0, 1.0)) if is_dead else 0.0
+	body_sprite.position = Vector2(0, 9) if rolling else Vector2.ZERO
+	body_sprite.rotation = roll_progress * TAU * float(roll_direction) if rolling else (lerpf(0.0, -1.18 * facing_direction, clampf(death_elapsed / 0.42, 0.0, 1.0)) if is_dead else 0.0)
 	weapon_pivot.position = Vector2(2 * facing_direction, -11 + bob).round()
 	var air_distance := clampf(absf(player_velocity.y) / 850.0, 0.0, 1.0)
 	shadow.scale.x = lerpf(1.0, 0.72, air_distance)
 	shadow.modulate.a = lerpf(0.34, 0.18, air_distance)
 	body_sprite.set_pose(base_animation_state, animation_phase, facing_direction, hurt_remaining / 0.18, clampf(death_elapsed / 0.42, 0.0, 1.0))
+	queue_redraw()
 
 
 func play_shot() -> void:
@@ -84,7 +107,18 @@ func reset_visual() -> void:
 	hurt_remaining = 0.0
 	animation_state = &"idle"
 	base_animation_state = &"idle"
+	roll_progress = 0.0
+	grenade_charging = false
+	grenade_charge_value = 0.0
 	weapon_pivot.visible = true
+	body_sprite.position = Vector2.ZERO
+	body_sprite.rotation = 0.0
+	queue_redraw()
+
+
+func play_roll_ready() -> void:
+	roll_ready_flash = 0.12
+	queue_redraw()
 
 
 func get_muzzle_global_position() -> Vector2:
@@ -108,3 +142,18 @@ func _body_bob() -> float:
 		&"land":
 			return 2.0
 	return 0.0
+
+
+func _draw() -> void:
+	if roll_progress > 0.0:
+		var behind := -1.0 if roll_direction > 0 else 1.0
+		for index in range(3):
+			var width := 18.0 - index * 4.0
+			draw_rect(Rect2(behind * (30.0 + index * 12.0) - (width if behind < 0 else 0.0), 8.0 + index * 6.0, width, 4.0), Color(0.52, 0.91, 1.0, 0.55 - index * 0.12), true)
+		draw_rect(Rect2(-18, 28, 36, 4), Color(1.0, 0.83, 0.35, 0.55), true)
+	if roll_ready_flash > 0.0:
+		draw_rect(Rect2(-19, -36, 38, 4), Color(0.52, 1.0, 0.72, roll_ready_flash / 0.12), true)
+	if grenade_charging:
+		var grenade_x := 18.0 * float(facing_direction)
+		draw_rect(Rect2(grenade_x - 7, -28, 14, 14), Color("10243a"), true)
+		draw_rect(Rect2(grenade_x - 4, -25, 8, 8), Color("f49a36").lerp(Color("ffd35a"), grenade_charge_value), true)

@@ -329,13 +329,18 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vec
 			guard_open_remaining = 1.1
 			stagger_remaining = 0.34
 			last_hit_feedback = &"guard_break"
+		elif weapon_id == &"grenade":
+			multiplier = 0.78
+			guard_open_remaining = 1.0
+			stagger_remaining = 0.30
+			last_hit_feedback = &"guard_break"
 		else:
 			last_hit_feedback = &"block"
 		applied_damage = maxi(int(round(float(amount) * multiplier)), 1)
 		impulse *= multiplier
 		visual.play_block(1.0 if weapon_id in [&"shotgun", &"sniper"] else 0.55)
 		blocked.emit(hit_position, 1.0 if weapon_id in [&"shotgun", &"sniper"] else 0.55)
-	if kind in ["elite", "heavy"] and context.get("weapon_id", &"") in [&"shotgun", &"sniper"]:
+	if kind in ["elite", "heavy"] and context.get("weapon_id", &"") in [&"shotgun", &"sniper", &"grenade"]:
 		stagger_remaining = maxf(stagger_remaining, 0.14)
 		last_hit_feedback = &"heavy"
 	elif not was_blocked and context.get("weapon_id", &"") == &"sniper":

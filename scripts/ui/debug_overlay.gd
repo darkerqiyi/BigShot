@@ -52,6 +52,17 @@ func _update_readout() -> void:
 		"weapon_cooldown": 0.0,
 		"weapon_reloading": false,
 		"last_pattern": [],
+		"is_rolling": false,
+		"roll_direction": 0,
+		"roll_cooldown": 0.0,
+		"last_left_tap": 0.0,
+		"last_right_tap": 0.0,
+		"last_damage_kind": &"none",
+		"projectile_dodges": 0,
+		"grenade_charging": false,
+		"grenade_charge": 0.0,
+		"grenade_count": 0,
+		"predicted_throw_velocity": Vector2.ZERO,
 	}
 	if player != null and player.has_method("get_debug_snapshot"):
 		player_snapshot = player.get_debug_snapshot()
@@ -88,6 +99,23 @@ func _update_readout() -> void:
 		player_snapshot["weapon_cooldown"],
 		"  RELOADING" if player_snapshot["weapon_reloading"] else "",
 		pattern_text,
+	]
+	readout.text += "\n\nROLL: %s  dir %d  CD %.3f\nTap L/R: %.3f / %.3f\nLast damage: %s  projectile dodges: %d" % [
+		"ACTIVE" if player_snapshot["is_rolling"] else "ready" if float(player_snapshot["roll_cooldown"]) <= 0.0 else "cooldown",
+		int(player_snapshot["roll_direction"]),
+		float(player_snapshot["roll_cooldown"]),
+		float(player_snapshot["last_left_tap"]),
+		float(player_snapshot["last_right_tap"]),
+		str(player_snapshot["last_damage_kind"]),
+		int(player_snapshot["projectile_dodges"]),
+	]
+	var predicted_velocity: Vector2 = player_snapshot["predicted_throw_velocity"]
+	readout.text += "\nGRENADE: %s  charge %.2f  count %d\nThrow velocity: (%.1f, %.1f)" % [
+		"CHARGING" if player_snapshot["grenade_charging"] else "idle",
+		float(player_snapshot["grenade_charge"]),
+		int(player_snapshot["grenade_count"]),
+		predicted_velocity.x,
+		predicted_velocity.y,
 	]
 	var feedback := get_node_or_null("../CombatFeedback")
 	if feedback != null and feedback.has_method("get_debug_snapshot"):

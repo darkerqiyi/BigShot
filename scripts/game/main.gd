@@ -12,15 +12,17 @@ const MissionGateScript := preload("res://scripts/world/mission_gate.gd")
 const MissionPickupScript := preload("res://scripts/world/mission_pickup.gd")
 const MissionSpikesScript := preload("res://scripts/world/mission_spikes.gd")
 const MissionMovingPlatformScript := preload("res://scripts/world/moving_platform.gd")
+const PlayerGrenadeScript := preload("res://scripts/combat/player_grenade.gd")
+const GrenadeExplosionScript := preload("res://scripts/effects/grenade_explosion.gd")
 const Tuning := preload("res://scripts/config/game_tuning.gd")
 
 const MISSION_ENCOUNTERS := [
 	{
-		"id": 1, "title": "FIRST CONTACT", "trigger_x": 5200.0, "gate_x": 7500.0, "target_seconds": Vector2i(45, 60),
+		"id": 1, "title": "FIRST CONTACT", "trigger_x": 2830.0, "gate_x": 5200.0, "target_seconds": Vector2i(45, 60),
 		"waves": [
-			[{"kind": "assault", "x": 5820.0, "y": 552.0}, {"kind": "gunner", "x": 6680.0, "y": 552.0}],
-			[{"kind": "assault", "x": 5600.0, "y": 552.0}, {"kind": "assault", "x": 6880.0, "y": 552.0}, {"kind": "gunner", "x": 6320.0, "y": 552.0}],
-			[{"kind": "shield", "x": 6000.0, "y": 552.0}, {"kind": "gunner", "x": 7040.0, "y": 552.0}],
+			[{"kind": "assault", "x": 3480.0, "y": 552.0}, {"kind": "gunner", "x": 4300.0, "y": 552.0}],
+			[{"kind": "assault", "x": 3260.0, "y": 552.0}, {"kind": "assault", "x": 4560.0, "y": 552.0}, {"kind": "gunner", "x": 4020.0, "y": 552.0}],
+			[{"kind": "shield", "x": 3660.0, "y": 552.0}, {"kind": "gunner", "x": 4820.0, "y": 552.0}],
 		],
 	},
 	{
@@ -61,6 +63,7 @@ const SKILLED_TARGET_SECONDS := Vector2i(240, 360)
 @onready var projectiles: Node2D = $World/Projectiles
 @onready var effects: Node2D = $World/Effects
 @onready var hazards: Node2D = $World/Hazards
+@onready var grenades: Node2D = $World/Grenades
 @onready var boss: CharacterBody2D = $World/Boss
 @onready var boss_gate: StaticBody2D = $World/BossGate
 @onready var boss_gate_visual: Polygon2D = $World/BossGateVisual
@@ -131,6 +134,10 @@ func _ready() -> void:
 	player.jumped.connect(_on_player_jumped)
 	player.footstep.connect(_on_player_footstep)
 	player.low_health.connect(func() -> void: sfx.play_cue(&"low_health"))
+	player.roll_started.connect(func(_position: Vector2, _direction: int) -> void: sfx.play_cue(&"roll"))
+	player.grenade_requested.connect(_spawn_player_grenade)
+	player.grenade_count_changed.connect(hud.set_grenade_count)
+	player.grenade_empty.connect(func() -> void: sfx.play_cue(&"grenade_empty"))
 	player.died.connect(_on_player_died)
 	hud.restart_requested.connect(_restart_scene)
 	hud.quit_requested.connect(func() -> void: get_tree().quit())
@@ -154,6 +161,7 @@ func _ready() -> void:
 	if telemetry != null:
 		telemetry.record_weapon_selected(player.current_weapon_id)
 	hud.set_ammo(player.ammo, int(initial_weapon["magazine_size"]), false)
+	hud.set_grenade_count(player.grenade_count)
 	hud.set_weapon(player.current_weapon_id, initial_weapon)
 	hud.set_score(score)
 	hud.show_banner("DROP ZONE HOT", Color(1.0, 0.64, 0.24, 1))
@@ -293,7 +301,7 @@ func _spawn_mission_interactions() -> void:
 	_spawn_pickup(Vector2(10660, 548), &"ammo", 0, 0.35)
 	_spawn_pickup(Vector2(13420, 548), &"health", 25, 0.0)
 	_spawn_pickup(Vector2(16620, 548), &"ammo", 0, 0.45)
-	for spike_data in [[8600.0, 150.0], [9500.0, 180.0], [12120.0, 150.0]]:
+	for spike_data in [[8600.0, 72.0], [10000.0, 72.0], [12120.0, 72.0]]:
 		var spikes := MissionSpikesScript.new()
 		spikes.configure(float(spike_data[1]))
 		spikes.global_position = Vector2(float(spike_data[0]), 574.0)
@@ -363,6 +371,62 @@ func _spawn_projectile(origin: Vector2, direction: Vector2, team: StringName, da
 	else:
 		combat_feedback.request_shake(&"enemy_shot")
 		sfx.play_world_cue(&"boss_cannon" if source == &"boss" else &"enemy_shot", origin, player.global_position, source == &"boss")
+
+
+func _spawn_player_grenade(origin: Vector2, initial_velocity: Vector2) -> void:
+	if run_state in ["dead", "complete", "boss_defeated"]:
+		return
+	var grenade := PlayerGrenadeScript.new()
+	grenades.add_child(grenade)
+	grenade.configure(origin, initial_velocity, {
+		"gravity": Tuning.GRENADE_GRAVITY,
+		"fuse": Tuning.GRENADE_FUSE,
+		"bounce_damping": Tuning.GRENADE_BOUNCE_DAMPING,
+		"max_bounces": Tuning.GRENADE_MAX_BOUNCES,
+		"radius": Tuning.GRENADE_RADIUS,
+		"damage": Tuning.GRENADE_DAMAGE,
+		"knockback": Tuning.GRENADE_KNOCKBACK,
+	})
+	grenade.bounced.connect(func(position: Vector2, strength: float) -> void:
+		sfx.play_world_cue(&"grenade_bounce", position, player.global_position, false, -2.0 + strength * 2.0)
+	)
+	grenade.exploded.connect(_on_player_grenade_exploded)
+	sfx.play_cue(&"grenade_throw")
+
+
+func _on_player_grenade_exploded(center: Vector2, radius: float, damage: int, knockback: float) -> void:
+	var shape := CircleShape2D.new()
+	shape.radius = radius
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = shape
+	query.transform = Transform2D(0.0, center)
+	query.collision_mask = 4
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	var resolved_targets: Dictionary = {}
+	for hit in get_world_2d().direct_space_state.intersect_shape(query, 64):
+		var target := hit.get("collider") as Node
+		if target == null or resolved_targets.has(target.get_instance_id()) or not target.has_method("take_damage"):
+			continue
+		if not target.is_in_group("enemies") and not target.is_in_group("boss"):
+			continue
+		resolved_targets[target.get_instance_id()] = true
+		var direction: Vector2 = (target.global_position - center).normalized()
+		if direction.length_squared() < 0.01:
+			direction = Vector2.UP
+		target.take_damage(damage, direction * knockback, center, {
+			"weapon_id": &"grenade",
+			"team": &"player",
+			"direction": direction,
+			"impact_strength": 1.0,
+			"source": &"grenade",
+			"damage_kind": &"explosion",
+		})
+	var effect := GrenadeExplosionScript.new()
+	effects.add_child(effect)
+	effect.configure(center, radius)
+	sfx.play_world_cue(&"grenade_explosion", center, player.global_position, true)
+	combat_feedback.request_shake(&"grenade_explosion", &"grenade_explosion")
 
 
 func _spawn_player_volley(origin: Vector2, directions: Array[Vector2], team: StringName, weapon_data: Dictionary, damage: int) -> void:
@@ -631,6 +695,8 @@ func _on_player_died() -> void:
 		"kills": _run_kills,
 		"damage_events": _run_damage_events,
 	} if boss_checkpoint else {}
+	for grenade in grenades.get_children():
+		grenade.queue_free()
 	run_state = "dead"
 	if telemetry != null:
 		telemetry.record_death(player.global_position)
@@ -747,6 +813,8 @@ func _on_boss_died(_boss: Node) -> void:
 	combat_pacing.set_boss_mode(false)
 	run_state = "boss_defeated"
 	_clear_hostile_dangers()
+	for grenade in grenades.get_children():
+		grenade.queue_free()
 	for enemy in enemies.get_children():
 		if bool(enemy.get_meta("boss_summon", false)):
 			enemy.queue_free()
@@ -858,4 +926,6 @@ func _on_ui_cue_requested(cue: StringName) -> void:
 
 
 func _on_pause_changed(paused: bool) -> void:
+	if paused:
+		player.cancel_transient_actions()
 	sfx.set_game_paused(paused)

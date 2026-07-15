@@ -74,8 +74,10 @@ func _test_live_states() -> void:
 	_expect(hud.weapon_slots.size() == 4 and hud.weapon_icons.size() == 4, "four pixel weapon slots/icons are not present")
 	hud.set_weapon(&"shotgun", WeaponData.get_weapon(&"shotgun"))
 	hud.set_ammo(7, 8, false)
+	hud.set_grenade_count(2, 3)
 	_expect(hud._current_weapon_index == 1 and "SCATTERGUN" in hud.weapon_name_label.text, "weapon selection did not update pixel rack")
 	_expect(hud.weapon_ammo_labels[1].text == "07/08" and hud.weapon_ammo_labels[0].text == "", "inactive weapon ammo was not simplified")
+	_expect("GRENADES 2" in hud.ammo_label.text, "grenade inventory did not reach the compact player HUD")
 	hud.set_health(70, 100)
 	_expect(int(hud.health_bar.value) == 70 and hud.health_value.text == "070 / 100", "player pixel health HUD is inaccurate")
 	for _frame in range(12):

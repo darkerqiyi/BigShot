@@ -13,6 +13,11 @@ signal landed(position: Vector2, intensity: float)
 signal jumped(position: Vector2)
 signal footstep(position: Vector2, intensity: float, side: int)
 signal low_health
+signal roll_started(position: Vector2, direction: int)
+signal roll_finished(position: Vector2)
+signal grenade_requested(origin: Vector2, initial_velocity: Vector2)
+signal grenade_count_changed(current: int, maximum: int)
+signal grenade_empty
 signal died
 
 const HorizontalMotion := preload("res://scripts/player/player_horizontal_motion.gd")
@@ -33,6 +38,8 @@ const MAX_HEALTH := Tuning.PLAYER_MAX_HEALTH
 @onready var muzzle_flash: Node2D = $PlayerVisual/WeaponPivot/MuzzleFlash
 @onready var weapon = $PlayerVisual/WeaponPivot
 @onready var weapon_inventory: Node = $WeaponInventory
+@onready var grenade_charge_indicator: Node2D = $GrenadeChargeIndicator
+@onready var grenade_trajectory_preview: Node2D = $GrenadeTrajectoryPreview
 
 var movement_intent := 0.0
 var facing_direction := 1
@@ -55,6 +62,20 @@ var _footstep_distance := 0.0
 var _footstep_side := 0
 var _low_health_announced := false
 var last_damage_source := "unknown"
+var last_damage_kind: StringName = &"none"
+var is_rolling := false
+var roll_direction := 0
+var roll_remaining := 0.0
+var roll_cooldown_remaining := 0.0
+var last_left_tap_remaining := 0.0
+var last_right_tap_remaining := 0.0
+var projectile_dodges := 0
+var grenade_count := Tuning.PLAYER_GRENADE_COUNT
+var grenade_charging := false
+var grenade_charge := 0.0
+var grenade_charge_elapsed := 0.0
+var grenade_throw_remaining := 0.0
+var predicted_throw_velocity := Vector2.ZERO
 
 var ammo: int:
 	get:
@@ -81,6 +102,7 @@ func _ready() -> void:
 	visual.reset_visual()
 	visual.set_aim_direction(aim_direction, facing_direction)
 	ammo_changed.emit(ammo, int(weapon_inventory.get_current_data()["magazine_size"]), false)
+	grenade_count_changed.emit(grenade_count, Tuning.PLAYER_GRENADE_COUNT)
 
 
 func _input(event: InputEvent) -> void:
@@ -88,13 +110,34 @@ func _input(event: InputEvent) -> void:
 		_using_mouse_aim = true
 	elif event is InputEventJoypadMotion and absf(event.axis_value) > 0.3:
 		_using_mouse_aim = false
+	if event is InputEventKey and event.echo:
+		return
+	if not alive or not controls_enabled or get_tree().paused:
+		return
+	if event.is_action_pressed("move_left"):
+		_register_direction_tap(-1)
+	elif event.is_action_pressed("move_right"):
+		_register_direction_tap(1)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_clear_double_tap_cache()
+		_cancel_grenade_charge()
 
 
 func _physics_process(delta: float) -> void:
 	var grounded_before_move := is_on_floor()
 	weapon_inventory.tick(delta)
 	_invulnerability_remaining = maxf(_invulnerability_remaining - delta, 0.0)
+	var roll_cooldown_before := roll_cooldown_remaining
+	roll_cooldown_remaining = maxf(roll_cooldown_remaining - delta, 0.0)
+	if roll_cooldown_before > 0.0 and is_zero_approx(roll_cooldown_remaining):
+		visual.play_roll_ready()
+	last_left_tap_remaining = maxf(last_left_tap_remaining - delta, 0.0)
+	last_right_tap_remaining = maxf(last_right_tap_remaining - delta, 0.0)
 	jump_buffer_remaining = maxf(jump_buffer_remaining - delta, 0.0)
+	grenade_throw_remaining = maxf(grenade_throw_remaining - delta, 0.0)
 	coyote_remaining = COYOTE_TIME if is_on_floor() else maxf(coyote_remaining - delta, 0.0)
 
 	if not alive:
@@ -104,7 +147,12 @@ func _physics_process(delta: float) -> void:
 		_animate_visual(delta)
 		return
 
+	if is_rolling:
+		_update_roll(delta)
+		return
+
 	_update_aim()
+	_handle_grenade(delta)
 	if controls_enabled:
 		movement_intent = Input.get_axis("move_left", "move_right")
 		if Input.is_action_just_pressed("jump"):
@@ -144,8 +192,155 @@ func _physics_process(delta: float) -> void:
 
 
 func request_jump() -> void:
-	if alive and controls_enabled:
+	if alive and controls_enabled and not is_rolling:
 		jump_buffer_remaining = JUMP_BUFFER_TIME
+
+
+func _register_direction_tap(direction: int) -> void:
+	if direction < 0:
+		if last_left_tap_remaining > 0.0:
+			_try_start_roll(-1)
+			_clear_double_tap_cache()
+		else:
+			last_left_tap_remaining = Tuning.PLAYER_DOUBLE_TAP_WINDOW
+			last_right_tap_remaining = 0.0
+	else:
+		if last_right_tap_remaining > 0.0:
+			_try_start_roll(1)
+			_clear_double_tap_cache()
+		else:
+			last_right_tap_remaining = Tuning.PLAYER_DOUBLE_TAP_WINDOW
+			last_left_tap_remaining = 0.0
+
+
+func _try_start_roll(direction: int) -> bool:
+	if not alive or not controls_enabled or is_rolling or grenade_charging or grenade_throw_remaining > 0.0 or roll_cooldown_remaining > 0.0 or not is_on_floor():
+		return false
+	is_rolling = true
+	roll_direction = -1 if direction < 0 else 1
+	roll_remaining = Tuning.PLAYER_ROLL_DURATION
+	movement_intent = float(roll_direction)
+	facing_direction = roll_direction
+	velocity.x = Tuning.PLAYER_ROLL_SPEED * roll_direction
+	weapon_inventory.cancel_reload()
+	muzzle_flash.visible = false
+	roll_started.emit(global_position + Vector2(0, 30), roll_direction)
+	return true
+
+
+func _update_roll(delta: float) -> void:
+	roll_remaining = maxf(roll_remaining - delta, 0.0)
+	if not is_on_floor():
+		_end_roll()
+		return
+	velocity.x = Tuning.PLAYER_ROLL_SPEED * roll_direction
+	velocity.y = 0.0
+	var x_before_move := global_position.x
+	move_and_slide()
+	_update_footsteps(absf(global_position.x - x_before_move))
+	_animate_visual(delta)
+	if roll_remaining <= 0.0:
+		_end_roll()
+
+
+func _end_roll(start_cooldown: bool = true) -> void:
+	if not is_rolling:
+		return
+	is_rolling = false
+	roll_remaining = 0.0
+	velocity.x = clampf(velocity.x, -Tuning.PLAYER_MAX_SPEED, Tuning.PLAYER_MAX_SPEED)
+	if start_cooldown:
+		roll_cooldown_remaining = Tuning.PLAYER_ROLL_COOLDOWN
+	roll_finished.emit(global_position + Vector2(0, 30))
+
+
+func _clear_double_tap_cache() -> void:
+	last_left_tap_remaining = 0.0
+	last_right_tap_remaining = 0.0
+
+
+func _handle_grenade(delta: float) -> void:
+	if not alive or not controls_enabled or is_rolling:
+		_cancel_grenade_charge()
+		return
+	if grenade_charging:
+		if Input.is_action_just_released("throw_grenade"):
+			_release_grenade()
+			return
+		grenade_charge_elapsed += delta
+		grenade_charge = pingpong(grenade_charge_elapsed / maxf(Tuning.GRENADE_CHARGE_CYCLE, 0.01), 1.0)
+		predicted_throw_velocity = _calculate_grenade_velocity()
+		grenade_charge_indicator.show_charge(grenade_charge, facing_direction)
+		grenade_trajectory_preview.show_prediction(predicted_throw_velocity, Tuning.GRENADE_GRAVITY)
+		return
+	if grenade_throw_remaining > 0.0 or not Input.is_action_just_pressed("throw_grenade"):
+		return
+	if grenade_count <= 0:
+		grenade_empty.emit()
+		return
+	_start_grenade_charge()
+
+
+func _start_grenade_charge() -> bool:
+	if not alive or not controls_enabled or is_rolling or grenade_throw_remaining > 0.0 or grenade_count <= 0:
+		return false
+	grenade_charging = true
+	grenade_charge = 0.0
+	grenade_charge_elapsed = 0.0
+	predicted_throw_velocity = _calculate_grenade_velocity()
+	weapon_inventory.cancel_reload()
+	muzzle_flash.visible = false
+	grenade_charge_indicator.show_charge(grenade_charge, facing_direction)
+	grenade_trajectory_preview.show_prediction(predicted_throw_velocity, Tuning.GRENADE_GRAVITY)
+	return true
+
+
+func _release_grenade() -> bool:
+	if not grenade_charging or grenade_count <= 0:
+		_cancel_grenade_charge()
+		return false
+	predicted_throw_velocity = _calculate_grenade_velocity()
+	var origin := global_position + Vector2(20.0 * facing_direction, -18.0)
+	grenade_count -= 1
+	grenade_charging = false
+	grenade_throw_remaining = 0.18
+	grenade_charge_indicator.hide_charge()
+	grenade_trajectory_preview.hide_prediction()
+	grenade_count_changed.emit(grenade_count, Tuning.PLAYER_GRENADE_COUNT)
+	grenade_requested.emit(origin, predicted_throw_velocity)
+	return true
+
+
+func _cancel_grenade_charge() -> void:
+	grenade_charging = false
+	grenade_charge = 0.0
+	grenade_charge_elapsed = 0.0
+	predicted_throw_velocity = Vector2.ZERO
+	if grenade_charge_indicator != null:
+		grenade_charge_indicator.hide_charge()
+	if grenade_trajectory_preview != null:
+		grenade_trajectory_preview.hide_prediction()
+
+
+func _calculate_grenade_velocity() -> Vector2:
+	var direction := aim_direction.normalized()
+	if direction.length_squared() < 0.1:
+		direction = Vector2(float(facing_direction), -0.35)
+	if direction.y > -0.18:
+		direction.y = -0.35
+	if absf(direction.x) < 0.18:
+		direction.x = 0.18 * float(facing_direction)
+	direction = direction.normalized()
+	var speed := lerpf(Tuning.GRENADE_MIN_THROW_SPEED, Tuning.GRENADE_MAX_THROW_SPEED, grenade_charge)
+	return direction * speed
+
+
+func cancel_transient_actions() -> void:
+	_clear_double_tap_cache()
+	_end_roll(false)
+	roll_cooldown_remaining = 0.0
+	grenade_throw_remaining = 0.0
+	_cancel_grenade_charge()
 
 
 func _update_aim() -> void:
@@ -163,6 +358,8 @@ func _update_aim() -> void:
 
 func _handle_weapon(delta: float) -> void:
 	_rifle_bloom = maxf(_rifle_bloom - 5.0 * delta, 0.0)
+	if is_rolling or grenade_charging or grenade_throw_remaining > 0.0:
+		return
 	_handle_weapon_selection()
 	if weapon_inventory.is_reloading():
 		return
@@ -268,7 +465,8 @@ func _animate_visual(delta: float) -> void:
 	_landing_feedback_remaining = maxf(_landing_feedback_remaining - delta, 0.0)
 	_jump_stretch_remaining = maxf(_jump_stretch_remaining - delta, 0.0)
 	visual.facing_direction = facing_direction
-	visual.update_pose(delta, velocity, is_on_floor(), movement_intent, aim_direction, _landing_feedback_remaining)
+	var roll_progress := 1.0 - roll_remaining / maxf(Tuning.PLAYER_ROLL_DURATION, 0.001) if is_rolling else 0.0
+	visual.update_pose(delta, velocity, is_on_floor(), movement_intent, aim_direction, _landing_feedback_remaining, is_rolling, roll_progress, grenade_charging, grenade_throw_remaining, grenade_charge)
 
 
 func _on_landed(fall_speed: float) -> void:
@@ -293,6 +491,14 @@ func _update_footsteps(distance_moved: float) -> void:
 func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, _hit_position: Vector2 = Vector2.ZERO, context: Dictionary = {}) -> void:
 	if not alive or _invulnerability_remaining > 0.0:
 		return
+	last_damage_kind = StringName(context.get("damage_kind", &"contact"))
+	if is_rolling and last_damage_kind == &"projectile":
+		projectile_dodges += 1
+		return
+	if is_rolling:
+		_end_roll()
+	if grenade_charging:
+		_cancel_grenade_charge()
 	health = maxi(health - amount, 0)
 	last_damage_source = str(context.get("source", "unknown"))
 	velocity += impulse
@@ -322,6 +528,7 @@ func _flash_hurt() -> void:
 
 
 func _die() -> void:
+	cancel_transient_actions()
 	alive = false
 	controls_enabled = false
 	collision_layer = 0
@@ -352,4 +559,16 @@ func get_debug_snapshot() -> Dictionary:
 		"base_visual_state": visual.base_animation_state,
 		"muzzle_position": visual.get_muzzle_global_position(),
 		"last_pattern": _last_pattern_degrees.duplicate(),
+		"is_rolling": is_rolling,
+		"roll_direction": roll_direction,
+		"roll_remaining": roll_remaining,
+		"roll_cooldown": roll_cooldown_remaining,
+		"last_left_tap": last_left_tap_remaining,
+		"last_right_tap": last_right_tap_remaining,
+		"last_damage_kind": last_damage_kind,
+		"projectile_dodges": projectile_dodges,
+		"grenade_charging": grenade_charging,
+		"grenade_charge": grenade_charge,
+		"grenade_count": grenade_count,
+		"predicted_throw_velocity": predicted_throw_velocity,
 	}

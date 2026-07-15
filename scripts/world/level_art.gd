@@ -4,16 +4,16 @@ class_name LevelPixelArt
 const GROUND_TOP := 584.0
 const LEVEL_WIDTH := 20000.0
 const PLATFORM_RECTS := [
-	Rect2(1470, 470, 260, 22),
-	Rect2(2850, 425, 300, 22),
-	Rect2(4375, 475, 250, 22),
-	Rect2(6060, 410, 280, 22),
-	Rect2(8070, 470, 260, 22),
-	Rect2(9250, 425, 300, 22),
-	Rect2(11475, 475, 250, 22),
-	Rect2(14360, 410, 280, 22),
-	Rect2(16470, 470, 260, 22),
-	Rect2(18250, 425, 300, 22),
+	Rect2(1470, 496, 260, 22),
+	Rect2(2850, 492, 300, 22),
+	Rect2(4375, 500, 250, 22),
+	Rect2(6060, 491, 280, 22),
+	Rect2(8070, 496, 260, 22),
+	Rect2(9250, 492, 300, 22),
+	Rect2(11475, 500, 250, 22),
+	Rect2(14360, 491, 280, 22),
+	Rect2(16470, 496, 260, 22),
+	Rect2(18250, 492, 300, 22),
 ]
 const COVER_POSITIONS := [900.0, 3600.0, 6500.0, 9200.0, 12100.0, 15100.0, 16900.0]
 const BOSS_ARENA := Rect2(17800, 80, 2200, 504)
@@ -55,7 +55,7 @@ func _draw_ground() -> void:
 	for index in range(200):
 		var x := float(index) * 100.0
 		_draw_floor_panel(x, index)
-	for section_x in [5200.0, 7800.0, 10800.0, 13600.0, 16200.0, 17800.0]:
+	for section_x in [2830.0, 7800.0, 10800.0, 13600.0, 16200.0, 17800.0]:
 		draw_rect(Rect2(section_x, GROUND_TOP + 12, 12, 168), INK, true)
 		draw_rect(Rect2(section_x + 4, GROUND_TOP + 28, 4, 48), Color(GOLD, 0.55), true)
 
@@ -104,14 +104,14 @@ func _draw_supply_console(x: float, index: int) -> void:
 
 
 func _draw_route_markers() -> void:
-	for entry in [[5200.0, CYAN], [7800.0, GOLD], [10800.0, PURPLE_LIGHT], [13600.0, ORANGE], [16200.0, CYAN], [17800.0, PURPLE_LIGHT]]:
+	for entry in [[2830.0, CYAN], [7800.0, GOLD], [10800.0, PURPLE_LIGHT], [13600.0, ORANGE], [16200.0, CYAN], [17800.0, PURPLE_LIGHT]]:
 		var x: float = entry[0]
 		var color: Color = entry[1]
 		draw_rect(Rect2(x, 506, 12, 78), INK, true)
 		draw_rect(Rect2(x + 4, 510, 4, 70), Color(color, 0.72), true)
 		draw_rect(Rect2(x - 20, 506, 52, 8), INK, true)
 		draw_rect(Rect2(x - 12, 508, 36, 4), color, true)
-	_draw_low_crystal_cluster(Vector2(5360, GROUND_TOP), CYAN)
+	_draw_low_crystal_cluster(Vector2(2990, GROUND_TOP), CYAN)
 	_draw_low_crystal_cluster(Vector2(7980, GROUND_TOP), GOLD)
 	_draw_low_crystal_cluster(Vector2(10960, GROUND_TOP), PURPLE_LIGHT)
 	_draw_low_crystal_cluster(Vector2(13780, GROUND_TOP), ORANGE)

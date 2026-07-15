@@ -83,6 +83,7 @@ func _physics_process(delta: float) -> void:
 				"direction": direction,
 				"impact_strength": impact_strength,
 				"source": source_tag,
+				"damage_kind": &"projectile",
 			})
 		var strength := impact_strength if can_damage else Tuning.TERRAIN_HIT_STRENGTH
 		impacted.emit(hit["position"], tint, strength)

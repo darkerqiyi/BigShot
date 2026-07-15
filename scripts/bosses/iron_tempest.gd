@@ -213,7 +213,7 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vec
 	health = maxi(health - amount, 0)
 	velocity += impulse * 0.12
 	var weapon_id: StringName = context.get("weapon_id", &"")
-	var heavy_hit := weapon_id in [&"shotgun", &"sniper"] or float(context.get("impact_strength", 0.0)) >= 0.8
+	var heavy_hit := weapon_id in [&"shotgun", &"sniper", &"grenade"] or float(context.get("impact_strength", 0.0)) >= 0.8
 	last_hit_feedback = &"boss_heavy" if heavy_hit else &"boss_normal"
 	_flash_white(heavy_hit, hit_position)
 	var next_phase := 3 if health <= int(MAX_HEALTH * 0.30) else (2 if health <= int(MAX_HEALTH * 0.65) else 1)

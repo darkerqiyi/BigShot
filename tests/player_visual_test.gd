@@ -35,6 +35,8 @@ func _test_structure_and_physics_contract(player: CharacterBody2D) -> void:
 	_expect(HorizontalMotion.MAX_SPEED == 260.0 and Tuning.PLAYER_JUMP_SPEED == 590.0 and Tuning.PLAYER_MAX_HEALTH == 100, "movement, jump, or health tuning changed during visual work")
 	for path in ["PlayerVisual/Shadow", "PlayerVisual/BodySprite", "PlayerVisual/WeaponPivot/BackArm", "PlayerVisual/WeaponPivot/WeaponSprite", "PlayerVisual/WeaponPivot/FrontArm", "PlayerVisual/WeaponPivot/MuzzlePoint", "PlayerVisual/VisualEffects"]:
 		_expect(player.has_node(path), "missing separated player visual node: %s" % path)
+	for path in ["GrenadeChargeIndicator", "GrenadeTrajectoryPreview"]:
+		_expect(player.has_node(path), "missing world-space grenade aiming aid: %s" % path)
 	_expect(player.visual.scale.x > 0.0 and player.visual.scale.y > 0.0, "player visual uses a negative scale that can corrupt children")
 	_expect(player.visual.scale == Vector2(1.25, 1.25) and player.visual.position == Vector2(0, -8), "player second-pass 125% visual calibration or foot compensation is missing")
 	var shadow_relative_y: float = player.visual.get_node("Shadow").global_position.y - player.global_position.y

@@ -86,6 +86,16 @@ func start_reload() -> bool:
 	return true
 
 
+func cancel_reload() -> bool:
+	if reload_remaining <= 0.0:
+		return false
+	reload_remaining = 0.0
+	_reload_insert_emitted = false
+	var data := get_current_data()
+	ammo_changed.emit(get_ammo(), int(data["magazine_size"]), false)
+	return true
+
+
 func get_current_data() -> Dictionary:
 	return WeaponData.get_weapon(current_weapon_id)
 

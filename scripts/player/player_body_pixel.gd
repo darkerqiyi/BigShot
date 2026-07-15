@@ -29,6 +29,9 @@ func set_pose(next_pose: StringName, next_phase: float, next_facing: int, next_h
 
 
 func _draw() -> void:
+	if pose == &"roll":
+		_draw_roll()
+		return
 	var body_bob := 0
 	if pose == &"idle":
 		body_bob = 1 if sin(phase * 2.2) > 0.55 else 0
@@ -125,6 +128,15 @@ func _draw_hurt_highlight(body_bob: int) -> void:
 	_pixel_rect(-16, -31 + body_bob, 3, 20, color)
 	_pixel_rect(-16, -8 + body_bob, 3, 21, color)
 	_pixel_rect(-13, 14 + body_bob, 3, 12, color)
+
+
+func _draw_roll() -> void:
+	_pixel_rect(-17, -17, 34, 34, INK)
+	_pixel_rect(-13, -13, 26, 26, SUIT_DARK)
+	_pixel_rect(-9, -14, 18, 8, SUIT)
+	_pixel_rect(-11, -5, 22, 8, GOLD)
+	_pixel_rect(-9, 5, 18, 7, DEEP)
+	_pixel_rect(4, -11, 8, 6, VISOR)
 
 
 func _pixel_rect(x: int, y: int, width: int, height: int, color: Color) -> void:

@@ -23,7 +23,7 @@ const SLOT_ICON_KINDS := ["rifle", "shotgun", "sniper", "pistol"]
 const SLOT_COLORS := [Style.GOLD, Color("ff6c3a"), Style.SHIELD, Style.HEALTH]
 const UI_SCALE_CHOICES := [80, 90, 100]
 const AUDIO_BUSES: Array[StringName] = [&"Master", &"Music", &"SFX"]
-const CONTROLS_TEXT := "A/D MOVE  •  SPACE JUMP  •  MOUSE AIM  •  LMB/J FIRE  •  1—4 WEAPONS  •  R RELOAD  •  ESC PAUSE"
+const CONTROLS_TEXT := "A/D MOVE  •  AA/DD ROLL  •  SPACE JUMP  •  MOUSE AIM  •  LMB/J FIRE  •  RMB GRENADE  •  1—4 WEAPONS  •  R RELOAD  •  ESC PAUSE"
 
 @onready var player_panel: PanelContainer = $PlayerPanel
 @onready var health_bar: ProgressBar = $PlayerPanel/Content/Info/HealthBar
@@ -131,6 +131,10 @@ var _controls_hide_requested := false
 var _weapon_initialized := false
 var _weapon_hint_shown := false
 var _last_hover_cue_msec := -1000
+var _current_ammo := 0
+var _current_magazine := 0
+var _ammo_reloading := false
+var _grenade_count := 3
 
 
 func _ready() -> void:
@@ -236,11 +240,24 @@ func set_health(current: int, maximum: int) -> void:
 
 
 func set_ammo(current: int, maximum: int, reloading: bool) -> void:
-	ammo_label.text = "RELOADING..." if reloading else "MAG %02d / %02d" % [current, maximum]
+	_current_ammo = current
+	_current_magazine = maximum
+	_ammo_reloading = reloading
+	_update_ammo_text()
 	ammo_label.modulate = Style.DANGER if reloading or current <= 2 else Style.GOLD
 	for index in range(weapon_ammo_labels.size()):
 		weapon_ammo_labels[index].text = (("LOAD" if reloading else "%02d/%02d" % [current, maximum]) if index == _current_weapon_index else "")
 		weapon_ammo_labels[index].modulate = SLOT_COLORS[index] if index == _current_weapon_index else Style.MUTED
+
+
+func set_grenade_count(current: int, _maximum: int = 3) -> void:
+	_grenade_count = maxi(current, 0)
+	_update_ammo_text()
+
+
+func _update_ammo_text() -> void:
+	var magazine_text := "RELOADING" if _ammo_reloading else "MAG %02d / %02d" % [_current_ammo, _current_magazine]
+	ammo_label.text = "%s  •  GRENADES %d" % [magazine_text, _grenade_count]
 
 
 func set_weapon(current_id: StringName, weapon_data: Dictionary) -> void:

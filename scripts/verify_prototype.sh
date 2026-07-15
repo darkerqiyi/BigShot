@@ -79,6 +79,17 @@ if [[ -n "$filtered_errors" ]]; then
 fi
 grep "PLAYER_VISUAL_PASS" "$LOG_DIR/player_visual.log"
 
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/player_combat_abilities_test.gd >"$LOG_DIR/player_abilities.log" 2>&1; then
+	cat "$LOG_DIR/player_abilities.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/player_abilities.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "PLAYER_ABILITIES_PASS" "$LOG_DIR/player_abilities.log"
+
 if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/combat_feedback_test.gd >"$LOG_DIR/combat_feedback.log" 2>&1; then
 	cat "$LOG_DIR/combat_feedback.log" >&2
 	exit 1
@@ -100,6 +111,17 @@ if [[ -n "$filtered_errors" ]]; then
 	exit 1
 fi
 grep "ENVIRONMENT_VISUAL_PASS" "$LOG_DIR/environment_visual.log"
+
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/level_mobility_test.gd >"$LOG_DIR/level_mobility.log" 2>&1; then
+	cat "$LOG_DIR/level_mobility.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/level_mobility.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "LEVEL_MOBILITY_PASS" "$LOG_DIR/level_mobility.log"
 
 if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/boss_visual_test.gd >"$LOG_DIR/boss_visual.log" 2>&1; then
 	cat "$LOG_DIR/boss_visual.log" >&2
