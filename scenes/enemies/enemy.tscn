@@ -1,0 +1,58 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/enemy.gd" id="1_enemy"]
+[ext_resource type="Script" path="res://scripts/enemies/enemy_pixel_visual.gd" id="2_visual"]
+[ext_resource type="Script" path="res://scripts/effects/pixel_muzzle_flash.gd" id="3_flash"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_enemy"]
+size = Vector2(38, 58)
+
+[node name="Enemy" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 3
+floor_snap_length = 8.0
+script = ExtResource("1_enemy")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 3)
+shape = SubResource("RectangleShape2D_enemy")
+
+[node name="EnemyVisual" type="Node2D" parent="."]
+script = ExtResource("2_visual")
+
+[node name="MuzzlePoint" type="Marker2D" parent="EnemyVisual"]
+position = Vector2(24, -12)
+
+[node name="MuzzleFlash" type="Node2D" parent="EnemyVisual"]
+visible = false
+position = Vector2(24, -12)
+z_index = 5
+script = ExtResource("3_flash")
+
+[node name="VisualEffects" type="Node2D" parent="EnemyVisual"]
+z_index = 6
+
+[node name="HealthBar" type="Node2D" parent="."]
+position = Vector2(-22, -41)
+visible = false
+
+[node name="Back" type="Polygon2D" parent="HealthBar"]
+polygon = PackedVector2Array(0, 0, 44, 0, 44, 5, 0, 5)
+color = Color(0.05, 0.06, 0.07, 0.9)
+
+[node name="Fill" type="Polygon2D" parent="HealthBar"]
+polygon = PackedVector2Array(1, 1, 43, 1, 43, 4, 1, 4)
+color = Color(1, 0.28, 0.18, 1)
+
+[node name="Warning" type="Node2D" parent="."]
+visible = false
+position = Vector2(0, -54)
+z_index = 12
+
+[node name="Outer" type="Polygon2D" parent="Warning"]
+polygon = PackedVector2Array(0, -12, 11, 0, 0, 12, -11, 0)
+color = Color(1, 0.34, 0.12, 0.92)
+
+[node name="Inner" type="Polygon2D" parent="Warning"]
+polygon = PackedVector2Array(0, -6, 5, 0, 0, 6, -5, 0)
+color = Color(1, 0.92, 0.48, 1)

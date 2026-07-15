@@ -1,0 +1,249 @@
+[gd_scene load_steps=23 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_player"]
+[ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="3_camera"]
+[ext_resource type="Script" path="res://scripts/world/parallax_art.gd" id="4_parallax"]
+[ext_resource type="Script" path="res://scripts/world/level_art.gd" id="5_level"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="6_hud"]
+[ext_resource type="Script" path="res://scripts/ui/debug_overlay.gd" id="7_debug"]
+[ext_resource type="Script" path="res://scripts/audio/procedural_sfx.gd" id="8_sfx"]
+[ext_resource type="PackedScene" path="res://scenes/bosses/iron_tempest.tscn" id="9_boss"]
+[ext_resource type="Script" path="res://scripts/world/sky_pixel_art.gd" id="10_sky"]
+[ext_resource type="Script" path="res://scripts/world/boss_gate_pixel.gd" id="11_gate"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
+size = Vector2(20000, 112)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wall"]
+size = Vector2(32, 720)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_platform_a"]
+size = Vector2(260, 22)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_platform_b"]
+size = Vector2(300, 22)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_platform_c"]
+size = Vector2(250, 22)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_platform_d"]
+size = Vector2(280, 22)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_boss_gate"]
+size = Vector2(28, 720)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_debug"]
+bg_color = Color(0.025, 0.04, 0.055, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.72, 0.62, 0.55)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="Sky" type="CanvasLayer" parent="."]
+layer = -100
+
+[node name="Base" type="ColorRect" parent="Sky"]
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.063, 0.141, 0.227, 1)
+
+[node name="Horizon" type="ColorRect" parent="Sky"]
+offset_top = 330.0
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.169, 0.4, 0.439, 1)
+
+[node name="GlowBand" type="ColorRect" parent="Sky"]
+offset_top = 286.0
+offset_right = 1280.0
+offset_bottom = 475.0
+mouse_filter = 2
+color = Color(0.373, 0.702, 0.678, 0.1)
+
+[node name="SkyPixels" type="Node2D" parent="Sky"]
+script = ExtResource("10_sky")
+
+[node name="World" type="Node2D" parent="."]
+
+[node name="FarArt" type="Node2D" parent="World"]
+z_index = -90
+script = ExtResource("4_parallax")
+parallax_factor = 0.15
+layer_kind = "far"
+
+[node name="MidArt" type="Node2D" parent="World"]
+z_index = -70
+script = ExtResource("4_parallax")
+parallax_factor = 0.45
+layer_kind = "mid"
+
+[node name="LevelArt" type="Node2D" parent="World"]
+z_index = -10
+script = ExtResource("5_level")
+
+[node name="Floor" type="StaticBody2D" parent="World"]
+position = Vector2(10000, 640)
+collision_layer = 1
+collision_mask = 6
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/Floor"]
+shape = SubResource("RectangleShape2D_floor")
+
+[node name="LeftWall" type="StaticBody2D" parent="World"]
+position = Vector2(-16, 360)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/LeftWall"]
+shape = SubResource("RectangleShape2D_wall")
+
+[node name="RightWall" type="StaticBody2D" parent="World"]
+position = Vector2(20016, 360)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/RightWall"]
+shape = SubResource("RectangleShape2D_wall")
+
+[node name="PlatformA" type="StaticBody2D" parent="World"]
+position = Vector2(1600, 481)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformA"]
+shape = SubResource("RectangleShape2D_platform_a")
+
+[node name="PlatformB" type="StaticBody2D" parent="World"]
+position = Vector2(3000, 436)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformB"]
+shape = SubResource("RectangleShape2D_platform_b")
+
+[node name="PlatformC" type="StaticBody2D" parent="World"]
+position = Vector2(4500, 486)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformC"]
+shape = SubResource("RectangleShape2D_platform_c")
+
+[node name="PlatformD" type="StaticBody2D" parent="World"]
+position = Vector2(6200, 421)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformD"]
+shape = SubResource("RectangleShape2D_platform_d")
+
+[node name="PlatformE" type="StaticBody2D" parent="World"]
+position = Vector2(8200, 481)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformE"]
+shape = SubResource("RectangleShape2D_platform_a")
+
+[node name="PlatformF" type="StaticBody2D" parent="World"]
+position = Vector2(9400, 436)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformF"]
+shape = SubResource("RectangleShape2D_platform_b")
+
+[node name="PlatformG" type="StaticBody2D" parent="World"]
+position = Vector2(11600, 486)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformG"]
+shape = SubResource("RectangleShape2D_platform_c")
+
+[node name="PlatformH" type="StaticBody2D" parent="World"]
+position = Vector2(14500, 421)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformH"]
+shape = SubResource("RectangleShape2D_platform_d")
+
+[node name="PlatformI" type="StaticBody2D" parent="World"]
+position = Vector2(16600, 481)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformI"]
+shape = SubResource("RectangleShape2D_platform_a")
+
+[node name="PlatformJ" type="StaticBody2D" parent="World"]
+position = Vector2(18400, 436)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/PlatformJ"]
+shape = SubResource("RectangleShape2D_platform_b")
+
+[node name="Player" parent="World" instance=ExtResource("2_player")]
+position = Vector2(230, 552)
+
+[node name="Enemies" type="Node2D" parent="World"]
+
+[node name="Boss" parent="World" instance=ExtResource("9_boss")]
+position = Vector2(19000, 520)
+
+[node name="Projectiles" type="Node2D" parent="World"]
+
+[node name="Effects" type="Node2D" parent="World"]
+
+[node name="Hazards" type="Node2D" parent="World"]
+
+[node name="BossGate" type="StaticBody2D" parent="World"]
+position = Vector2(17800, 360)
+collision_layer = 0
+collision_mask = 6
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="World/BossGate"]
+shape = SubResource("RectangleShape2D_boss_gate")
+
+[node name="BossGateVisual" type="Polygon2D" parent="World"]
+visible = false
+z_index = 50
+polygon = PackedVector2Array(17790, 80, 17810, 80, 17810, 584, 17790, 584)
+color = Color(0, 0, 0, 0)
+script = ExtResource("11_gate")
+
+[node name="FrontArt" type="Node2D" parent="World"]
+z_index = 80
+script = ExtResource("4_parallax")
+parallax_factor = 1.15
+layer_kind = "front"
+
+[node name="Camera" type="Camera2D" parent="."]
+position = Vector2(640, 360)
+position_smoothing_speed = 5.8
+script = ExtResource("3_camera")
+target_path = NodePath("../World/Player")
+level_width = 20000.0
+
+[node name="HUD" parent="." instance=ExtResource("6_hud")]
+
+[node name="SFX" type="Node" parent="."]
+script = ExtResource("8_sfx")
+
+[node name="DebugOverlay" type="CanvasLayer" parent="."]
+visible = false
+layer = 90
+script = ExtResource("7_debug")
+player_path = NodePath("../World/Player")
+
+[node name="Panel" type="PanelContainer" parent="DebugOverlay"]
+offset_left = 875.0
+offset_top = 92.0
+offset_right = 1256.0
+offset_bottom = 465.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_debug")
+
+[node name="Margin" type="MarginContainer" parent="DebugOverlay/Panel"]
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="Rows" type="VBoxContainer" parent="DebugOverlay/Panel/Margin"]
+theme_override_constants/separation = 5
+
+[node name="Heading" type="Label" parent="DebugOverlay/Panel/Margin/Rows"]
+theme_override_colors/font_color = Color(0.35, 0.9, 0.65, 1)
+text = "DEBUG // F3"
+
+[node name="Readout" type="Label" parent="DebugOverlay/Panel/Margin/Rows"]
+text = "Starting diagnostics..."

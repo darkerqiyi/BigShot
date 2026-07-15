@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/projectile.gd" id="1_projectile"]
+
+[node name="Projectile" type="Node2D"]
+z_index = 20
+script = ExtResource("1_projectile")
+
