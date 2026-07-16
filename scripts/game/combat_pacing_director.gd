@@ -6,6 +6,7 @@ const BOSS_SUPPORT_ATTACK_SLOTS := 1
 const HIGH_RISK_GAP := 0.65
 
 var boss_mode := false
+var normal_attack_slots := NORMAL_ATTACK_SLOTS
 var _clock := 0.0
 var _last_high_risk_attack := -99.0
 var _support_suspended_until := -1.0
@@ -22,7 +23,7 @@ func request_attack(owner: Node, high_risk: bool) -> bool:
 	_cleanup_invalid_owners()
 	if boss_mode and _clock < _support_suspended_until:
 		return false
-	var limit := BOSS_SUPPORT_ATTACK_SLOTS if boss_mode else NORMAL_ATTACK_SLOTS
+	var limit := BOSS_SUPPORT_ATTACK_SLOTS if boss_mode else normal_attack_slots
 	if _owners.size() >= limit:
 		return false
 	if high_risk and _clock - _last_high_risk_attack < HIGH_RISK_GAP:
@@ -41,6 +42,10 @@ func release_attack(owner: Node) -> void:
 func set_boss_mode(enabled: bool) -> void:
 	boss_mode = enabled
 	_cleanup_invalid_owners()
+
+
+func set_normal_attack_slots(count: int) -> void:
+	normal_attack_slots = clampi(count, 1, NORMAL_ATTACK_SLOTS)
 
 
 func suspend_boss_support(duration: float) -> void:

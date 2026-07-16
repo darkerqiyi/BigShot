@@ -4,6 +4,7 @@ const SurvivalWaveManagerScript := preload("res://scripts/survival/wave_manager.
 const SurvivalWaveData := preload("res://scripts/survival/survival_wave_data.gd")
 const SpawnWarningScript := preload("res://scripts/survival/spawn_warning.gd")
 const SurvivalArenaArtScript := preload("res://scripts/survival/survival_arena_art.gd")
+const SurvivalBalanceTelemetryScript := preload("res://scripts/debug/survival_balance_telemetry.gd")
 
 const ARENA_LEFT := 16.0
 const ARENA_RIGHT := 1264.0
@@ -22,6 +23,7 @@ var weapon_kills := {
 	&"pistol": 0,
 }
 var grenade_kills := 0
+var survival_balance_telemetry: Node
 var best_score := 0
 var best_time := 0.0
 var _spawn_positions: Dictionary = {}
@@ -74,6 +76,11 @@ func _ready() -> void:
 	wave_manager.wave_completed.connect(_on_survival_wave_completed)
 	wave_manager.boss_requested.connect(_on_survival_boss_requested)
 	wave_manager.run_completed.connect(_on_survival_run_completed)
+	if OS.is_debug_build() and not bool(get_meta("survival_test_mode", false)):
+		survival_balance_telemetry = SurvivalBalanceTelemetryScript.new()
+		survival_balance_telemetry.name = "SurvivalBalanceTelemetry"
+		add_child(survival_balance_telemetry)
+		survival_balance_telemetry.configure(player, telemetry, _run_elapsed)
 	_load_survival_records()
 	hud.set_survival_mode(true)
 	hud.hide_objective(true)
@@ -90,6 +97,21 @@ func _process(delta: float) -> void:
 			current_combo = 0
 		_recover_survival_enemies()
 		_refresh_survival_hud()
+		if survival_balance_telemetry != null:
+			var active_count := 0
+			var attacking_count := 0
+			for enemy in enemies.get_children():
+				if bool(enemy.get("alive")) and bool(enemy.get("active")):
+					active_count += 1
+					if StringName(enemy.get("state")) in [&"telegraph", &"attack"]:
+						attacking_count += 1
+			survival_balance_telemetry.sample(
+				_run_elapsed,
+				active_count,
+				maxi(attacking_count, combat_pacing.active_attack_count()),
+				projectiles.get_child_count(),
+				effects.get_child_count(),
+			)
 
 
 func _create_arena_boundaries() -> void:
@@ -114,8 +136,11 @@ func _create_arena_art() -> void:
 
 func _on_survival_wave_started(wave_number: int, total: int, title: String) -> void:
 	run_state = "boss" if wave_manager.is_boss_wave(wave_number) else "survival_combat"
+	combat_pacing.set_normal_attack_slots(1 if wave_number <= 2 else 2)
 	hud.show_banner("WAVE %02d // %s" % [wave_number, title], Color("ffb347"), false, 0.72)
 	sfx.play_cue(&"mission_start")
+	if survival_balance_telemetry != null:
+		survival_balance_telemetry.begin_wave(wave_number, title, _run_elapsed)
 
 
 func _on_spawn_warning_requested(ticket: int, _kind: String, side: String, warning_time: float) -> void:
@@ -134,6 +159,8 @@ func _on_survival_spawn_requested(ticket: int, kind: String, side: String) -> vo
 	_spawn_positions.erase(ticket)
 	var enemy := _spawn_enemy(kind, spawn_position, 0.0, false, false, wave_manager.current_wave)
 	wave_manager.register_spawned(ticket, enemy)
+	if survival_balance_telemetry != null:
+		survival_balance_telemetry.record_spawn(kind)
 	var timer := get_tree().create_timer(SPAWN_PROTECTION_TIME)
 	timer.timeout.connect(_activate_spawned_enemy.bind(enemy.get_instance_id()))
 
@@ -161,7 +188,12 @@ func _choose_spawn_position(side: String, ticket: int) -> Vector2:
 	var safe: Array[Vector2] = []
 	for candidate_value in candidates:
 		var candidate: Vector2 = candidate_value
-		if candidate.distance_to(player.global_position) >= 360.0:
+		var clear_of_enemy := true
+		for enemy in enemies.get_children():
+			if bool(enemy.get("alive")) and candidate.distance_to(enemy.global_position) < 96.0:
+				clear_of_enemy = false
+				break
+		if candidate.distance_to(player.global_position) >= 360.0 and clear_of_enemy:
 			safe.append(candidate)
 	if safe.is_empty():
 		safe = [Vector2(120.0, 552.0) if player.global_position.x > ARENA_CENTER else Vector2(1160.0, 552.0)]
@@ -200,11 +232,13 @@ func _on_survival_rest_started(completed_wave: int, duration: float) -> void:
 	_clear_hostile_dangers()
 	for grenade in grenades.get_children():
 		grenade.queue_free()
-	if completed_wave in [3, 6, 9]:
-		var health_supply := 30 if completed_wave == 9 else 18
-		var ammo_floor := 0.82 if completed_wave == 9 else 0.60
-		var grenades_supply := 3 if completed_wave == 9 else 1
+	if completed_wave in [3, 5, 7, 9]:
+		var health_supply := int({3: 12, 5: 24, 7: 18, 9: 30}[completed_wave])
+		var ammo_floor := float({3: 0.50, 5: 0.70, 7: 0.60, 9: 0.82}[completed_wave])
+		var grenades_supply := int({3: 1, 5: 2, 7: 1, 9: 3}[completed_wave])
 		player.apply_field_resupply(health_supply, ammo_floor, grenades_supply)
+		if survival_balance_telemetry != null:
+			survival_balance_telemetry.record_supply(health_supply, ammo_floor, grenades_supply)
 		var cache_name := "BOSS CACHE" if completed_wave == 9 else "FIELD CACHE"
 		var cache_message := "%s // HP +%d  •  AMMO %d%%  •  GRENADE +%d" % [
 			cache_name, health_supply, int(ammo_floor * 100.0), grenades_supply,
@@ -214,8 +248,10 @@ func _on_survival_rest_started(completed_wave: int, duration: float) -> void:
 		hud.show_banner("WAVE CLEAR // REST %.0f SEC" % duration, Color("55e39a"), false, 0.9)
 
 
-func _on_survival_wave_completed(_wave_number: int) -> void:
+func _on_survival_wave_completed(wave_number: int) -> void:
 	_clear_hostile_dangers()
+	if survival_balance_telemetry != null:
+		survival_balance_telemetry.complete_wave(wave_number, _run_elapsed)
 
 
 func _on_survival_boss_requested(_wave_number: int) -> void:
@@ -225,6 +261,8 @@ func _on_survival_boss_requested(_wave_number: int) -> void:
 	_boss_defeat_pending = false
 	boss.global_position = Vector2(1010.0, 520.0)
 	boss.activate(player)
+	if telemetry != null:
+		telemetry.boss_started()
 	hud.begin_boss_intro(boss.boss_name, boss.MAX_HEALTH)
 	combat_feedback.request_shake(&"boss_intro", &"survival_boss_intro")
 	sfx.play_cue(&"boss_intro")
@@ -276,10 +314,14 @@ func _on_enemy_died(enemy: Node, points: int) -> void:
 		grenade_kills += 1
 	elif weapon_kills.has(weapon_id):
 		weapon_kills[weapon_id] = int(weapon_kills[weapon_id]) + 1
+	if survival_balance_telemetry != null:
+		survival_balance_telemetry.record_defeat(str(enemy.get("kind")), weapon_id)
 
 
 func _on_player_damage_received(amount: int, context: Dictionary) -> void:
 	super._on_player_damage_received(amount, context)
+	if survival_balance_telemetry != null:
+		survival_balance_telemetry.record_player_damage(amount, context)
 	current_combo = 0
 	combo_remaining = 0.0
 
@@ -294,6 +336,8 @@ func _on_player_died() -> void:
 	sfx.stop_bus_cues(&"Boss")
 	if telemetry != null:
 		telemetry.record_death(player.global_position)
+	if survival_balance_telemetry != null:
+		survival_balance_telemetry.finish(&"death", _run_elapsed)
 	combat_feedback.request_shake(&"player_death", &"player_death")
 	sfx.play_cue(&"player_death")
 	sfx.duck_music(0.55, 5.0)
@@ -306,6 +350,10 @@ func _on_survival_run_completed() -> void:
 	if run_state == "complete":
 		return
 	run_state = "complete"
+	if telemetry != null:
+		telemetry.finish(&"complete")
+	if survival_balance_telemetry != null:
+		survival_balance_telemetry.finish(&"complete", _run_elapsed)
 	player.controls_enabled = false
 	_clear_hostile_dangers()
 	for grenade in grenades.get_children():

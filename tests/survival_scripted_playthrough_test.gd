@@ -3,6 +3,8 @@ extends SceneTree
 const SurvivalScene := preload("res://scenes/survival/survival.tscn")
 
 var failures: Array[String] = []
+var strategy := "mixed"
+var grenade_waves_used: Dictionary = {}
 
 
 func _init() -> void:
@@ -10,6 +12,10 @@ func _init() -> void:
 
 
 func _run() -> void:
+	seed(1337)
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--strategy="):
+			strategy = argument.trim_prefix("--strategy=")
 	var game := SurvivalScene.instantiate()
 	root.add_child(game)
 	current_scene = game
@@ -58,13 +64,20 @@ func _run() -> void:
 	var frame_count := 0
 	var last_kill_count: int = game._run_kills
 	var no_kill_elapsed := 0.0
-	while is_instance_valid(game) and game.run_state != "complete" and game._run_elapsed < 720.0:
+	while is_instance_valid(game) and game.run_state != "complete" and game._run_elapsed < 900.0:
 		frame_count += 1
 		# Keep the deterministic validation bot alive; damage delivery itself remains active.
+		# Heal between physics steps so real damage events and their source remain
+		# observable without making this deterministic acceptance bot mortal.
 		player.health = player.MAX_HEALTH
-		player._invulnerability_remaining = maxf(player._invulnerability_remaining, 10.0)
 		player.global_position.x = 640.0
 		player.velocity.x = 0.0
+		if strategy == "rifle_only" and frame_count % 18 == 0 and player.is_on_floor() and not player.is_rolling:
+			player._register_direction_tap(1 if frame_count % 36 == 0 else -1)
+			player._register_direction_tap(1 if frame_count % 36 == 0 else -1)
+		elif strategy == "mixed" and frame_count % 240 == 0 and game.projectiles.get_child_count() > 0 and player.is_on_floor() and not player.is_rolling:
+			player._register_direction_tap(1 if frame_count % 480 == 0 else -1)
+			player._register_direction_tap(1 if frame_count % 480 == 0 else -1)
 		if game.boss.active and game.boss.alive:
 			game.boss.global_position = Vector2(960.0, 520.0)
 			game.boss.velocity = Vector2.ZERO
@@ -80,16 +93,22 @@ func _run() -> void:
 			# This is test-only stall recovery for a fixed firing station, not a runtime
 			# shortcut. Production uses the arena's normal out-of-bounds recovery.
 			if target != game.boss and no_kill_elapsed >= 8.0:
-				target.global_position = Vector2(940.0 if target.global_position.x >= 640.0 else 340.0, 552.0)
+				target.global_position = Vector2(860.0 if target.global_position.x >= 640.0 else 420.0, 552.0)
 				target.velocity = Vector2.ZERO
 				no_kill_elapsed = 0.0
-			var weapon_id := _weapon_for_target(game, target)
+			var weapon_id := &"rifle" if strategy == "rifle_only" else _weapon_for_target(game, target)
 			if player.current_weapon_id != weapon_id:
 				player.weapon_inventory.select_weapon(weapon_id)
 			var offset: Vector2 = target.global_position - player.global_position
 			player.aim_direction = offset.normalized()
 			_set_move(0.0)
-			_drive_fire(player, frame_count)
+			Input.action_release("sprint")
+			var wave_number: int = game.wave_manager.current_wave
+			if strategy == "mixed" and wave_number in [3, 6, 8, 9] and not grenade_waves_used.has(wave_number) and player.grenade_count > 0 and player._start_grenade_charge():
+				player.grenade_charge = clampf(absf(offset.x) / 720.0, 0.28, 0.72)
+				if player._release_grenade():
+					grenade_waves_used[wave_number] = true
+			_drive_fire(player, frame_count, game._run_elapsed)
 			if player.ammo <= 1:
 				player._start_reload()
 			Input.action_release("reload")
@@ -110,12 +129,16 @@ func _run() -> void:
 		if int(weapon_stats["shots"]) > 0 and int(weapon_stats["damage"]) > 0:
 			used_weapon_count += 1
 	_expect(game.run_state == "complete", "scripted survival playthrough did not clear ten waves")
-	_expect(game._run_elapsed >= 120.0 and game._run_elapsed <= 420.0, "simulated survival duration %.1fs was outside the 2-7 minute automated validation band" % game._run_elapsed)
-	_expect(used_weapon_count == 4, "all four weapons did not produce damage during survival")
+	var duration_in_band: bool = game._run_elapsed >= 180.0 and game._run_elapsed <= 420.0
+	_expect(duration_in_band, "simulated survival duration %.1fs was outside the strategy band for %s" % [game._run_elapsed, strategy])
+	_expect(used_weapon_count == (1 if strategy == "rifle_only" else 4), "weapon contribution count %d did not match strategy %s" % [used_weapon_count, strategy])
 	_expect(int(snapshot["max_active_enemies"]) <= 6, "scripted survival exceeded the six-enemy active cap")
 	_expect(int(snapshot["roll"]["successes"]) >= 1, "survival telemetry did not record the roll")
 	_expect(int(snapshot["grenades"]["throws"]) >= 1, "survival telemetry did not record the grenade")
+	if strategy == "mixed":
+		_expect(int(snapshot["grenades"]["damage"]) > 0, "mixed survival route did not produce real grenade damage")
 	print("SURVIVAL_SCRIPTED_METRICS %s" % JSON.stringify({
+		"strategy": strategy,
 		"elapsed": game._run_elapsed,
 		"kills": game._run_kills,
 		"score": game.score,
@@ -125,6 +148,8 @@ func _run() -> void:
 		"sprint_air_speed": sprint_air_speed,
 		"rolls": snapshot["roll"]["successes"],
 		"grenades": snapshot["grenades"]["throws"],
+		"damage_events": snapshot["damage_events"],
+		"damage_sources": snapshot["damage_sources"],
 	}))
 	_finish()
 
@@ -148,8 +173,10 @@ func _weapon_for_target(game: Node, target: Node) -> StringName:
 	if target == game.boss:
 		return [&"rifle", &"sniper", &"pistol"][clampi(game.boss.phase - 1, 0, 2)]
 	var kind := str(target.get("kind"))
-	if kind in ["assault", "shield"]:
+	if kind == "shield":
 		return &"shotgun"
+	if kind == "assault":
+		return &"shotgun" if absf(target.global_position.x - game.player.global_position.x) <= 300.0 else &"rifle"
 	if kind in ["elite", "heavy"]:
 		return &"pistol"
 	return &"sniper"
@@ -167,7 +194,7 @@ func _preferred_distance(weapon_id: StringName) -> float:
 			return 360.0
 
 
-func _drive_fire(player: Node, frame_count: int) -> void:
+func _drive_fire(player: Node, frame_count: int, _elapsed: float) -> void:
 	var automatic := bool(player.weapon_inventory.get_current_data()["automatic_fire"])
 	if automatic or frame_count % 3 == 0:
 		Input.action_press("fire")

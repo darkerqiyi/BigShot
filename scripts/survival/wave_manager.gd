@@ -26,10 +26,14 @@ var state := State.IDLE
 var current_wave := 0
 var total_waves := 0
 var max_active_enemies := 6
+var configured_active_limit := 6
 var intermission_duration := 10.0
 var initial_countdown := 2.5
 var spawn_warning_time := 0.55
 var spawn_interval := 0.42
+var configured_spawn_interval := 0.42
+var batch_size := 99
+var reinforcement_delay := 0.0
 var countdown_remaining := 0.0
 var completed_waves: Array[int] = []
 
@@ -40,13 +44,18 @@ var _active: Dictionary = {}
 var _defeated_ids: Dictionary = {}
 var _next_ticket := 1
 var _spawn_cooldown := 0.0
+var _reinforcement_cooldown := 0.0
+var _spawned_this_batch := 0
 var _wave_completion_locked := false
+var _debug_timings_enabled := false
 
 
 func configure(waves: Array[Dictionary], active_limit: int = 6) -> void:
 	_waves = waves.duplicate(true)
 	total_waves = _waves.size()
 	max_active_enemies = maxi(active_limit, 1)
+	configured_active_limit = max_active_enemies
+	configured_spawn_interval = spawn_interval
 
 
 func set_debug_timings(initial: float, rest: float, warning: float, interval: float) -> void:
@@ -56,6 +65,8 @@ func set_debug_timings(initial: float, rest: float, warning: float, interval: fl
 	intermission_duration = maxf(rest, 0.0)
 	spawn_warning_time = maxf(warning, 0.0)
 	spawn_interval = maxf(interval, 0.0)
+	configured_spawn_interval = spawn_interval
+	_debug_timings_enabled = true
 
 
 func start_run() -> void:
@@ -79,6 +90,8 @@ func reset_run() -> void:
 	_defeated_ids.clear()
 	_next_ticket = 1
 	_spawn_cooldown = 0.0
+	_reinforcement_cooldown = 0.0
+	_spawned_this_batch = 0
 	_wave_completion_locked = false
 
 
@@ -161,6 +174,7 @@ func _process(delta: float) -> void:
 	if state in [State.SPAWNING, State.ACTIVE]:
 		_prune_invalid_enemies()
 		_spawn_cooldown = maxf(_spawn_cooldown - delta, 0.0)
+		_reinforcement_cooldown = maxf(_reinforcement_cooldown - delta, 0.0)
 		_update_warnings(delta)
 		_queue_warning_if_possible()
 		_check_wave_complete()
@@ -174,6 +188,16 @@ func _begin_next_wave() -> void:
 	_wave_completion_locked = false
 	_defeated_ids.clear()
 	var definition: Dictionary = _waves[current_wave - 1]
+	if not _debug_timings_enabled:
+		max_active_enemies = maxi(int(definition.get("active_limit", configured_active_limit)), 1)
+		spawn_interval = maxf(float(definition.get("spawn_interval", configured_spawn_interval)), 0.0)
+		batch_size = maxi(int(definition.get("batch_size", 99)), 1)
+		reinforcement_delay = maxf(float(definition.get("reinforcement_delay", 0.0)), 0.0)
+	else:
+		batch_size = 99
+		reinforcement_delay = 0.0
+	_reinforcement_cooldown = 0.0
+	_spawned_this_batch = 0
 	wave_started.emit(current_wave, total_waves, str(definition.get("title", "WAVE")))
 	if bool(definition.get("boss", false)):
 		_set_state(State.BOSS)
@@ -201,14 +225,18 @@ func _expand_entries(entries: Array) -> Array[Dictionary]:
 
 
 func _queue_warning_if_possible() -> void:
-	if _pending.is_empty() or _spawn_cooldown > 0.0:
+	if _pending.is_empty() or _spawn_cooldown > 0.0 or _reinforcement_cooldown > 0.0:
 		return
 	if _active.size() + _warnings.size() >= max_active_enemies:
 		return
 	var entry: Dictionary = _pending.pop_front()
 	entry["remaining"] = spawn_warning_time
 	_warnings.append(entry)
+	_spawned_this_batch += 1
 	_spawn_cooldown = spawn_interval
+	if _spawned_this_batch >= batch_size and not _pending.is_empty():
+		_spawned_this_batch = 0
+		_reinforcement_cooldown = reinforcement_delay
 	spawn_warning_requested.emit(int(entry["ticket"]), str(entry["kind"]), str(entry["side"]), spawn_warning_time)
 	_emit_counters()
 
@@ -240,6 +268,8 @@ func _prune_invalid_enemies() -> void:
 			lost_ids.append(int(instance_id_value))
 	for instance_id in lost_ids:
 		_active.erase(instance_id)
+	if not lost_ids.is_empty():
+		_emit_counters()
 
 
 func _complete_current_wave() -> void:

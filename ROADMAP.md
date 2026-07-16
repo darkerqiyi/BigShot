@@ -207,20 +207,21 @@ Completed slices:
 
 ### Base ten-wave survival mode
 
-Status: **Pass for automated implementation and regression gates; human balance remains Partial** (2026-07-15).
+Status: **Pass for automated stability and pressure gates; human 8–15 minute balance remains Partial** (2026-07-16).
 
 - The project boots to a mode selector. PVE still loads `scenes/main/main.tscn`; survival independently loads `scenes/survival/survival.tscn` and does not create the PVE mission gate, authored encounters, route hazards, or pickups.
 - `scripts/survival/wave_manager.gd` owns only wave lifecycle, capped spawning, countdowns, one-shot completion, and stop/reset behavior. `scripts/survival/survival_wave_data.gd` separately defines all ten compositions.
-- Four safe edge spawn points use a 360 px player exclusion distance, a 0.55-second warning, 0.48-second attack protection, 0.42-second spawn cadence, and a six-enemy live cap.
-- Waves 1–9 escalate through assault/gunner/shield combinations; waves 5 and 9 include an elite. Wave 10 initializes the existing three-phase Iron Tempest with survival-local bounds and summon points while preserving PVE defaults.
-- Nine 10-second intermissions clear hostile projectiles/hazards. Waves 3/6 supply limited health, ammunition, and grenades; wave 9 grants the larger pre-Boss cache.
+- Four safe edge spawn points use a 360 px player exclusion distance, reject occupied spawn points inside 96 px, show a 0.55-second warning, and retain 0.48-second attack protection. Per-wave active caps rise 3→6 while data-driven deployment intervals and 2–5 unit reinforcement batches replace the old uniform rush.
+- Waves 1–9 now contain 77 ordinary/elite hostiles across progressively richer assault/gunner/shield combinations; waves 5 and 9 include an elite. The first two waves allow one simultaneous primary attack and later ordinary waves retain the global cap of two. Wave 10 initializes the existing three-phase Iron Tempest with survival-local bounds and summon points while preserving PVE defaults.
+- Nine 10-second intermissions clear hostile projectiles/hazards. Waves 3/5/7 provide bounded field supplies and wave 9 grants the larger pre-Boss cache; health, magazine floors, and grenades remain capped by existing player rules.
 - Survival HUD reports wave, active/queued hostiles, countdown, kills, score, and elapsed time without replacing the existing Boss HUD. Death stops generation and clears all enemies, Boss state, projectiles, hazards, and grenades before a fresh scene reload.
 - Settlement reports score, time, kills, best combo, four-weapon kills, grenade kills, and roll projectile evades. `ConfigFile` stores only local highest score/best time; no account, cloud, leaderboard, or progression layer was added.
-- Phase-A three-wave, full ten-wave, Boss-death reset, menu isolation, real-weapon ability playthrough, and full PVE regression gates run from `./scripts/verify_prototype.sh`.
+- `scripts/debug/survival_balance_telemetry.gd` records debug-only per-wave time, composition, pressure, damage source, resources, weapon contribution, and grenade use. The full verifier runs both a four-weapon route and a rifle-only/high-frequency-roll pressure route, in addition to Phase-A, structural ten-wave, Boss-death reset, menu isolation, and all PVE gates.
 
-Next production slice:
+Current acceptance evidence:
 
-- Keep this base mode stable while a separately approved slice designs and validates an optional between-wave Roguelite three-choice upgrade layer. Do not fold upgrades into `WaveManager` or permanently mutate PVE player/weapon data.
+- Deterministic real-projectile automation completes all ten waves in 268.5 seconds with all four weapons and in 274.2 seconds with rifle-only plus 228 successful roll inputs. Both settle once, peak at two simultaneous attacks, and retain clean Boss/death/PVE reset contracts.
+- These accelerated bots fire with near-perfect aim and heal between physics steps so real damage sources remain observable; they are regression/pressure evidence, not human completion-time evidence. One timed human clear, one exploit-focused human clear, and a physical-controller run remain required before approving the 8–15 minute target or starting Roguelite upgrades.
 
 ### Phase 2 — Shooting, ballistics, and damage
 

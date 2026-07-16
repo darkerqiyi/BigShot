@@ -267,6 +267,17 @@ if [[ -n "$filtered_errors" ]]; then
 fi
 grep "SURVIVAL_SCRIPTED_PASS" "$LOG_DIR/survival_playthrough.log"
 
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_scripted_playthrough_test.gd -- --strategy=rifle_only >"$LOG_DIR/survival_pressure.log" 2>&1; then
+	cat "$LOG_DIR/survival_pressure.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/survival_pressure.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SURVIVAL_SCRIPTED_PASS" "$LOG_DIR/survival_pressure.log"
+
 if ! "$GODOT_BIN" --headless --path "$ROOT" --quit-after 120 >"$LOG_DIR/runtime.log" 2>&1; then
 	cat "$LOG_DIR/runtime.log" >&2
 	exit 1

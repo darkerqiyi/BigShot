@@ -111,7 +111,7 @@ func _run() -> void:
 		_expect(current_scene.player.current_weapon_id == &"rifle" and WeaponData.ORDER.size() == 4, "PVE weapon state changed after survival")
 		_expect(current_scene.player.grenade_count == 3 and not current_scene.player.is_rolling and not current_scene.player.is_sprinting, "PVE ability state leaked from survival")
 
-	print("SURVIVAL_TEN_WAVE_METRICS waves=10 ordinary_kills=55 total_kills=%d max_active=%d simulated_seconds=%.2f boss_death_reset=true pve_isolated=true" % [completed_kills, max_active, completed_seconds])
+	print("SURVIVAL_TEN_WAVE_METRICS waves=10 ordinary_kills=77 total_kills=%d max_active=%d simulated_seconds=%.2f boss_death_reset=true pve_isolated=true" % [completed_kills, max_active, completed_seconds])
 	_finish()
 
 
