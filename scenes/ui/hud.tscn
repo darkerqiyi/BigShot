@@ -271,6 +271,32 @@ theme_override_font_sizes/font_size = 14
 text = "HOSTILES: 0"
 horizontal_alignment = 1
 
+[node name="SurvivalPanel" type="PanelContainer" parent="."]
+visible = false
+offset_left = 16.0
+offset_top = 120.0
+offset_right = 306.0
+offset_bottom = 202.0
+mouse_filter = 2
+
+[node name="Rows" type="VBoxContainer" parent="SurvivalPanel"]
+theme_override_constants/separation = 2
+
+[node name="Title" type="Label" parent="SurvivalPanel/Rows"]
+theme_override_colors/font_color = Color(1, 0.827, 0.353, 1)
+theme_override_font_sizes/font_size = 13
+text = "SURVIVAL // WAVE 01 / 10"
+
+[node name="State" type="Label" parent="SurvivalPanel/Rows"]
+theme_override_colors/font_color = Color(0.396, 0.784, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "DEPLOYMENT  •  00:03"
+
+[node name="Stats" type="Label" parent="SurvivalPanel/Rows"]
+theme_override_colors/font_color = Color(1, 0.957, 0.824, 1)
+theme_override_font_sizes/font_size = 11
+text = "HOSTILES 00  •  KILLS 000  •  TIME 00:00"
+
 [node name="BossPanel" type="PanelContainer" parent="."]
 visible = false
 anchors_preset = 10

@@ -169,7 +169,7 @@ Shift sprint and stamina pass completed 2026-07-15:
 - Stamina is centralized at 100 maximum, 28/s drain, 22/s recovery, 0.60-second delay, and a 20-point exhausted restart gate. Drain uses real post-collision displacement, so standing, opposing inputs, air time, pause, controlled states, and wall contact do not waste stamina.
 - Sprint cannot shoot or switch weapons. Fire, grenade charge, roll, hurt, death, focus loss, and disabled controls end it immediately; safe reload cancellation preserves current ammo. Rolls retain projectile evade and remain stamina-independent, while sprint has no invulnerability.
 - Visual-only SprintStart/Loop/Stop poses lean the body without rotating or resizing the 34x64 physics body. The weapon is stowed, footsteps accelerate, small pixel dust trails appear, and the independent world-space bar retracts from right to left before fading after full recovery.
-- Camera movement look gains a smooth, bounded 38 px sprint extension while preserving the 20,000 px level clamp. `player_sprint_stamina_test.gd`, captured sprint frames, the mixed-weapon PVE run, and the full verifier are the acceptance gates. No survival-mode runtime currently exists, so Roguelite/survival additions remain deferred.
+- Camera movement look gains a smooth, bounded 38 px sprint extension while preserving the 20,000 px level clamp. `player_sprint_stamina_test.gd`, captured sprint frames, the mixed-weapon PVE run, and the full verifier are the acceptance gates. The same player controller now also runs unchanged inside the independent survival arena.
 
 Sprint-jump momentum integration completed 2026-07-15:
 
@@ -205,9 +205,23 @@ Completed slices:
 - Horizontal acceleration, braking, reversal, keyboard/gamepad action input, collision bounds, and movement telemetry.
 - Full and cut-short jump behavior with buffer/coyote implementation, mouse/right-stick aiming, and horizontal follow camera.
 
-Next production slice:
+### Base ten-wave survival mode
 
-- Complete timed new-player and skilled-player runs of the expanded mission. If first-run 5–8 minutes and skilled 4–6 minutes are confirmed without fairness or gate stalls, proceed to pre-release QA; evaluate survival mode only after that evidence.
+Status: **Pass for automated stability and pressure gates; human 8–15 minute balance remains Partial** (2026-07-16).
+
+- The project boots to a mode selector. PVE still loads `scenes/main/main.tscn`; survival independently loads `scenes/survival/survival.tscn` and does not create the PVE mission gate, authored encounters, route hazards, or pickups.
+- `scripts/survival/wave_manager.gd` owns only wave lifecycle, capped spawning, countdowns, one-shot completion, and stop/reset behavior. `scripts/survival/survival_wave_data.gd` separately defines all ten compositions.
+- Four safe edge spawn points use a 360 px player exclusion distance, reject occupied spawn points inside 96 px, show a 0.55-second warning, and retain 0.48-second attack protection. Per-wave active caps rise 3→6 while data-driven deployment intervals and 2–5 unit reinforcement batches replace the old uniform rush.
+- Waves 1–9 now contain 77 ordinary/elite hostiles across progressively richer assault/gunner/shield combinations; waves 5 and 9 include an elite. The first two waves allow one simultaneous primary attack and later ordinary waves retain the global cap of two. Wave 10 initializes the existing three-phase Iron Tempest with survival-local bounds and summon points while preserving PVE defaults.
+- Nine 10-second intermissions clear hostile projectiles/hazards. Waves 3/5/7 provide bounded field supplies and wave 9 grants the larger pre-Boss cache; health, magazine floors, and grenades remain capped by existing player rules.
+- Survival HUD reports wave, active/queued hostiles, countdown, kills, score, and elapsed time without replacing the existing Boss HUD. Death stops generation and clears all enemies, Boss state, projectiles, hazards, and grenades before a fresh scene reload.
+- Settlement reports score, time, kills, best combo, four-weapon kills, grenade kills, and roll projectile evades. `ConfigFile` stores only local highest score/best time; no account, cloud, leaderboard, or progression layer was added.
+- `scripts/debug/survival_balance_telemetry.gd` records debug-only per-wave time, composition, pressure, damage source, resources, weapon contribution, and grenade use. The full verifier runs both a four-weapon route and a rifle-only/high-frequency-roll pressure route, in addition to Phase-A, structural ten-wave, Boss-death reset, menu isolation, and all PVE gates.
+
+Current acceptance evidence:
+
+- Deterministic real-projectile automation completes all ten waves in 268.5 seconds with all four weapons and in 274.2 seconds with rifle-only plus 228 successful roll inputs. Both settle once, peak at two simultaneous attacks, and retain clean Boss/death/PVE reset contracts.
+- These accelerated bots fire with near-perfect aim and heal between physics steps so real damage sources remain observable; they are regression/pressure evidence, not human completion-time evidence. One timed human clear, one exploit-focused human clear, and a physical-controller run remain required before approving the 8–15 minute target or starting Roguelite upgrades.
 
 ### Phase 2 — Shooting, ballistics, and damage
 

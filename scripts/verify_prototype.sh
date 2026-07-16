@@ -223,6 +223,61 @@ if [[ -n "$filtered_errors" ]]; then
 fi
 grep "SCRIPTED_PLAYTHROUGH_PASS" "$LOG_DIR/scripted_playthrough.log"
 
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/mode_select_test.gd >"$LOG_DIR/mode_select.log" 2>&1; then
+	cat "$LOG_DIR/mode_select.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/mode_select.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "MODE_SELECT_PASS" "$LOG_DIR/mode_select.log"
+
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_three_wave_test.gd >"$LOG_DIR/survival_three.log" 2>&1; then
+	cat "$LOG_DIR/survival_three.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/survival_three.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SURVIVAL_THREE_WAVE_PASS" "$LOG_DIR/survival_three.log"
+
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_ten_wave_test.gd >"$LOG_DIR/survival_ten.log" 2>&1; then
+	cat "$LOG_DIR/survival_ten.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/survival_ten.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SURVIVAL_TEN_WAVE_PASS" "$LOG_DIR/survival_ten.log"
+
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_scripted_playthrough_test.gd >"$LOG_DIR/survival_playthrough.log" 2>&1; then
+	cat "$LOG_DIR/survival_playthrough.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/survival_playthrough.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SURVIVAL_SCRIPTED_PASS" "$LOG_DIR/survival_playthrough.log"
+
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_scripted_playthrough_test.gd -- --strategy=rifle_only >"$LOG_DIR/survival_pressure.log" 2>&1; then
+	cat "$LOG_DIR/survival_pressure.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/survival_pressure.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SURVIVAL_SCRIPTED_PASS" "$LOG_DIR/survival_pressure.log"
+
 if ! "$GODOT_BIN" --headless --path "$ROOT" --quit-after 120 >"$LOG_DIR/runtime.log" 2>&1; then
 	cat "$LOG_DIR/runtime.log" >&2
 	exit 1
@@ -233,4 +288,4 @@ if [[ -n "$filtered_errors" ]]; then
 	exit 1
 fi
 
-printf 'PROTOTYPE_VERIFY_PASS regression, combat pacing, mixed-weapon playthrough, and 120-frame runtime checks passed\n'
+printf 'PROTOTYPE_VERIFY_PASS PVE regression, survival 3/10-wave loops, mode selection, abilities, scripted playthroughs, and 120-frame runtime checks passed\n'

@@ -36,6 +36,10 @@ const CONTROLS_TEXT := "A/D MOVE  •  AA/DD ROLL  •  SPACE JUMP  •  MOUSE A
 @onready var banner: Label = $Banner
 @onready var controls_label: Label = $Controls
 @onready var crosshair: Node2D = $Crosshair
+@onready var survival_panel: PanelContainer = $SurvivalPanel
+@onready var survival_title: Label = $SurvivalPanel/Rows/Title
+@onready var survival_state: Label = $SurvivalPanel/Rows/State
+@onready var survival_stats: Label = $SurvivalPanel/Rows/Stats
 
 @onready var weapon_rack: PanelContainer = $WeaponRack
 @onready var weapon_name_label: Label = $WeaponRack/Content/Header/CurrentWeaponLabel
@@ -110,6 +114,7 @@ const CONTROLS_TEXT := "A/D MOVE  •  AA/DD ROLL  •  SPACE JUMP  •  MOUSE A
 var boss_ui_state := BossUIState.HIDDEN
 var ui_scale_percent := 100
 var controls_auto_hide_enabled := true
+var survival_mode_enabled := false
 
 var _banner_tween: Tween
 var _boss_flow_tween: Tween
@@ -176,11 +181,12 @@ func _on_ui_hover() -> void:
 
 func _apply_theme() -> void:
 	var pixel_theme := Style.create_theme()
-	for control in [player_panel, score_panel, weapon_rack, objective_label, boss_panel, boss_phase_toast, banner, controls_label, state_overlay]:
+	for control in [player_panel, score_panel, weapon_rack, objective_label, survival_panel, boss_panel, boss_phase_toast, banner, controls_label, state_overlay]:
 		(control as Control).theme = pixel_theme
 	player_panel.add_theme_stylebox_override("panel", Style.make_compact_panel(Style.PRIMARY, Style.PANEL, 8.0, 5.0))
 	score_panel.add_theme_stylebox_override("panel", Style.make_compact_panel(Color(Style.GOLD, 0.66), Color(Style.PANEL, 0.82), 7.0, 3.0, 2))
 	weapon_rack.add_theme_stylebox_override("panel", Style.make_compact_panel(Style.SHIELD, Color(Style.PANEL, 0.92), 7.0, 5.0))
+	survival_panel.add_theme_stylebox_override("panel", Style.make_compact_panel(Color("ff8a45"), Color(Style.PANEL, 0.92), 7.0, 4.0))
 	boss_panel.add_theme_stylebox_override("panel", Style.make_compact_panel(Style.BOSS, Color(Style.PANEL, 0.96), 9.0, 4.0))
 	state_panel.add_theme_stylebox_override("panel", Style.make_panel(Style.GOLD, Color(Style.PANEL, 0.99)))
 	health_bar.add_theme_stylebox_override("background", Style.make_bar_background())
@@ -214,7 +220,7 @@ func _apply_ui_scale() -> void:
 	objective_label.pivot_offset = objective_label.size * 0.5
 	boss_phase_toast.pivot_offset = boss_phase_toast.size * 0.5
 	controls_label.pivot_offset = Vector2(controls_label.size.x * 0.5, controls_label.size.y)
-	for control in [player_panel, score_panel, weapon_rack, boss_panel, objective_label, boss_phase_toast, controls_label]:
+	for control in [player_panel, score_panel, weapon_rack, survival_panel, boss_panel, objective_label, boss_phase_toast, controls_label]:
 		(control as Control).scale = Vector2.ONE * factor
 
 
@@ -309,6 +315,70 @@ func set_score(value: int) -> void:
 		_score_tween.tween_property(score_panel, "modulate", Color.WHITE, 0.16)
 		_score_tween.tween_property(score_panel, "scale", Vector2.ONE * _ui_scale(), 0.16)
 	_last_score = value
+
+
+func set_survival_mode(enabled: bool) -> void:
+	survival_mode_enabled = enabled
+	survival_panel.visible = enabled
+	if enabled:
+		hide_objective(true)
+
+
+func set_survival_status(wave: int, total_waves: int, alive: int, pending: int, countdown: float, state: StringName, elapsed: float, kills: int) -> void:
+	if not survival_panel.visible:
+		return
+	var shown_wave := clampi(wave if wave > 0 else 1, 1, maxi(total_waves, 1))
+	survival_title.text = "SURVIVAL // WAVE %02d / %02d" % [shown_wave, total_waves]
+	var state_label := str({
+		&"countdown": "DEPLOYMENT",
+		&"spawning": "INCOMING",
+		&"active": "ENGAGED",
+		&"rest": "INTERMISSION",
+		&"boss": "IRON TEMPEST",
+		&"complete": "COMPLETE",
+		&"stopped": "RUN ENDED",
+	}.get(state, str(state).to_upper()))
+	survival_state.text = "%s  •  %02d:%02d" % [state_label, int(ceil(countdown)) / 60, int(ceil(countdown)) % 60]
+	var elapsed_seconds := int(elapsed)
+	survival_stats.text = "HOSTILES %02d  •  QUEUED %02d  •  KILLS %03d  •  TIME %02d:%02d" % [alive, pending, kills, elapsed_seconds / 60, elapsed_seconds % 60]
+
+
+func show_survival_death(wave: int, elapsed: float, kills: int, damage_source: String) -> void:
+	get_tree().paused = false
+	_clear_transient_labels()
+	_overlay_mode = &"death"
+	state_title.text = "SURVIVAL RUN LOST"
+	state_title.modulate = Style.DANGER
+	var elapsed_seconds := int(round(elapsed))
+	state_subtitle.text = "REACHED WAVE %02d  •  TIME %02d:%02d\nKILLS %03d  •  LAST HIT // %s" % [
+		wave, elapsed_seconds / 60, elapsed_seconds % 60, kills, damage_source.to_upper(),
+	]
+	primary_button.text = "RESTART SURVIVAL"
+	secondary_button.text = "RETURN TO MENU"
+	secondary_button.visible = true
+	audio_settings.visible = false
+	_show_state_overlay()
+
+
+func show_survival_settlement(summary: Dictionary) -> void:
+	_clear_transient_labels()
+	_overlay_mode = &"settlement"
+	state_title.text = "SURVIVAL COMPLETE"
+	state_title.modulate = Style.HEALTH
+	var elapsed_seconds := int(round(float(summary.get("elapsed", 0.0))))
+	var best_seconds := int(round(float(summary.get("best_time", 0.0))))
+	var weapon_kills: Dictionary = summary.get("weapon_kills", {})
+	state_subtitle.text = "10 WAVES CLEARED  •  SCORE %06d  •  TIME %02d:%02d\nKILLS %03d  •  BEST COMBO %02d  •  ROLL EVADES %02d\nAUTO %02d  SCATTER %02d  LANCE %02d  SIDE %02d  GRENADE %02d\nRECORD %06d  •  BEST TIME %02d:%02d" % [
+		int(summary.get("score", 0)), elapsed_seconds / 60, elapsed_seconds % 60,
+		int(summary.get("kills", 0)), int(summary.get("highest_combo", 0)), int(summary.get("roll_evades", 0)),
+		int(weapon_kills.get(&"rifle", 0)), int(weapon_kills.get(&"shotgun", 0)), int(weapon_kills.get(&"sniper", 0)), int(weapon_kills.get(&"pistol", 0)), int(summary.get("grenade_kills", 0)),
+		int(summary.get("best_score", 0)), best_seconds / 60, best_seconds % 60,
+	]
+	primary_button.text = "REPLAY SURVIVAL"
+	secondary_button.text = "RETURN TO MENU"
+	secondary_button.visible = true
+	audio_settings.visible = false
+	_show_state_overlay()
 
 
 func show_boss(boss_name: String, maximum: int) -> void:
@@ -593,7 +663,7 @@ func toggle_pause() -> void:
 		state_title.modulate = Style.GOLD
 		state_subtitle.text = "MOVE A/D  •  JUMP SPACE  •  AIM MOUSE\nFIRE LMB/J  •  WEAPONS 1—4  •  RELOAD R"
 		primary_button.text = "CONTINUE"
-		secondary_button.text = "RESTART MISSION"
+		secondary_button.text = "RESTART SURVIVAL" if survival_mode_enabled else "RESTART MISSION"
 		secondary_button.visible = true
 		audio_settings.visible = true
 		_show_state_overlay()
@@ -662,7 +732,7 @@ func _on_primary_pressed() -> void:
 func _on_secondary_pressed() -> void:
 	ui_cue_requested.emit(&"ui_confirm")
 	get_tree().paused = false
-	if _overlay_mode == &"settlement":
+	if _overlay_mode == &"settlement" or secondary_button.text == "RETURN TO MENU":
 		quit_requested.emit()
 	else:
 		restart_requested.emit()
