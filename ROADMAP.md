@@ -221,7 +221,26 @@ Status: **Pass for automated stability and pressure gates; human 8–15 minute b
 Current acceptance evidence:
 
 - Deterministic real-projectile automation completes all ten waves in 268.5 seconds with all four weapons and in 274.2 seconds with rifle-only plus 228 successful roll inputs. Both settle once, peak at two simultaneous attacks, and retain clean Boss/death/PVE reset contracts.
-- These accelerated bots fire with near-perfect aim and heal between physics steps so real damage sources remain observable; they are regression/pressure evidence, not human completion-time evidence. One timed human clear, one exploit-focused human clear, and a physical-controller run remain required before approving the 8–15 minute target or starting Roguelite upgrades.
+- These accelerated bots fire with near-perfect aim and heal between physics steps so real damage sources remain observable; they are regression/pressure evidence, not human completion-time evidence. One timed human clear, one exploit-focused human clear, and a physical-controller run remain required before approving the 8–15 minute target or final upgrade balance.
+
+### Lightweight in-run Roguelite upgrade system
+
+Status: **Pass for implementation and automated isolation; human Build balance remains Partial** (2026-07-16).
+
+- `scripts/survival/upgrade_definition.gd` owns twelve data definitions across movement, roll, grenade, weapon, and survival categories. Each definition carries its identifier, card text, category/icon token, stack cap, selection weight, and modifier data.
+- `scripts/survival/run_upgrade_manager.gd` owns only the current survival run's stacks, deterministic weighted candidate generation, selection history, final-value recomputation, safety clamps, and reset signals. It never writes to shared `.tres` resources or weapon catalog data.
+- Waves 2, 4, 6, and 8 enter a dedicated `UPGRADE_SELECTION` state after danger cleanup and before the normal intermission. Wave 10 goes directly to settlement. Candidate cards are unique, exclude maxed upgrades, and prefer at least two categories when the pool permits.
+- The screen-space three-card overlay accepts mouse, 1/2/3, and keyboard focus plus Enter. While it is open, player actions and weapon switching are suppressed, enemy generation is stopped, and the existing pause menu remains authoritative.
+- The complete pool contains ENDURANCE CORE, EFFICIENT DRIVE, MOMENTUM MODULE, EVASIVE CIRCUIT, EXTRA ORDNANCE, BLAST RADIUS, HIGH EXPLOSIVE, QUICK RELOAD, AUTO OVERCLOCK, SCATTER LOAD, LANCE PENETRATION, and REINFORCED VITALS.
+- Final parameters are rebuilt from immutable project baselines after every pick. Roll cooldown is clamped above 0.25 seconds, stamina drain above 60% of base, reload time above the animation-safe floor, and projectile count/penetration remain bounded. Grenade visuals use the same runtime radius as damage, and sprint jumps inherit the upgraded real sprint speed.
+- Death/restart, survival exit, debug reload, and entering PVE restore base player, grenade, and instance-local weapon values. Settlement and pause Build summaries read manager state without becoming gameplay authorities.
+
+Current acceptance evidence:
+
+- `survival_upgrade_test.gd` passes the three-card wave-two loop, pause/input isolation, all 32 legal stacks across twelve definitions, max-stack pool exclusion, runtime safety bounds, grenade visual/damage synchronization, and complete reset.
+- `survival_ten_wave_test.gd` triggers exactly once after waves 2/4/6/8, never after wave 10, reaches Boss settlement once, clears the Build on death/restart, and confirms PVE base parameters.
+- Two deterministic real-projectile ten-wave routes complete in 270.69 and 276.32 simulated seconds. The mixed route chooses EXTRA ORDNANCE, MOMENTUM MODULE, QUICK RELOAD, and EFFICIENT DRIVE; the rifle-only pressure route chooses LANCE PENETRATION, MOMENTUM MODULE, HIGH EXPLOSIVE, and MOMENTUM MODULE. Both settle with four valid choices and no persistent upgrade state.
+- These routes prove lifecycle, input, damage-path, and regression contracts, but they do not prove that every card is equally desirable to a person. Human choice frequency, perceived card clarity, and dominant-Build risk remain the next acceptance boundary.
 
 ### Phase 2 — Shooting, ballistics, and damage
 

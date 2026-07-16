@@ -16,6 +16,12 @@ var reload_remaining := 0.0
 var shot_sequence := 0
 var _ammo: Dictionary = {}
 var _reload_insert_emitted := false
+var _runtime_modifiers := {
+	"reload_time_multiplier": 1.0,
+	"rifle_fire_rate_multiplier": 1.0,
+	"shotgun_projectile_bonus": 0,
+	"sniper_penetration_bonus": 0,
+}
 
 
 func _ready() -> void:
@@ -97,7 +103,23 @@ func cancel_reload() -> bool:
 
 
 func get_current_data() -> Dictionary:
-	return WeaponData.get_weapon(current_weapon_id)
+	return _apply_runtime_modifiers(WeaponData.get_weapon(current_weapon_id))
+
+
+func set_runtime_modifiers(modifiers: Dictionary = {}) -> void:
+	_runtime_modifiers = {
+		"reload_time_multiplier": clampf(float(modifiers.get("reload_time_multiplier", 1.0)), 0.64, 1.0),
+		"rifle_fire_rate_multiplier": clampf(float(modifiers.get("rifle_fire_rate_multiplier", 1.0)), 0.70, 1.0),
+		"shotgun_projectile_bonus": clampi(int(modifiers.get("shotgun_projectile_bonus", 0)), 0, 2),
+		"sniper_penetration_bonus": clampi(int(modifiers.get("sniper_penetration_bonus", 0)), 0, 2),
+	}
+	if reload_remaining > 0.0:
+		reload_remaining = minf(reload_remaining, float(get_current_data()["reload_time"]))
+	_emit_current_state()
+
+
+func get_runtime_modifiers() -> Dictionary:
+	return _runtime_modifiers.duplicate(true)
 
 
 func get_ammo() -> int:
@@ -124,3 +146,14 @@ func _emit_current_state() -> void:
 	var data := get_current_data()
 	weapon_changed.emit(current_weapon_id, data)
 	ammo_changed.emit(get_ammo(), int(data["magazine_size"]), false)
+
+
+func _apply_runtime_modifiers(data: Dictionary) -> Dictionary:
+	data["reload_time"] = maxf(0.45, float(data["reload_time"]) * float(_runtime_modifiers["reload_time_multiplier"]))
+	if StringName(data["id"]) == &"rifle":
+		data["fire_rate"] = maxf(0.055, float(data["fire_rate"]) * float(_runtime_modifiers["rifle_fire_rate_multiplier"]))
+	elif StringName(data["id"]) == &"shotgun":
+		data["projectile_count"] = mini(int(data["projectile_count"]) + int(_runtime_modifiers["shotgun_projectile_bonus"]), 9)
+	elif StringName(data["id"]) == &"sniper":
+		data["penetration_count"] = mini(int(data["penetration_count"]) + int(_runtime_modifiers["sniper_penetration_bonus"]), 4)
+	return data

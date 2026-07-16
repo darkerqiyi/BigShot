@@ -411,13 +411,14 @@ func _spawn_player_grenade(origin: Vector2, initial_velocity: Vector2, charge: f
 		return
 	var grenade := PlayerGrenadeScript.new()
 	grenades.add_child(grenade)
+	var grenade_runtime: Dictionary = player.get_grenade_runtime_data() if player.has_method("get_grenade_runtime_data") else {"radius": Tuning.GRENADE_RADIUS, "damage": Tuning.GRENADE_DAMAGE}
 	grenade.configure(origin, initial_velocity, {
 		"gravity": Tuning.GRENADE_GRAVITY,
 		"fuse": Tuning.GRENADE_FUSE,
 		"bounce_damping": Tuning.GRENADE_BOUNCE_DAMPING,
 		"max_bounces": Tuning.GRENADE_MAX_BOUNCES,
-		"radius": Tuning.GRENADE_RADIUS,
-		"damage": Tuning.GRENADE_DAMAGE,
+		"radius": float(grenade_runtime.get("radius", Tuning.GRENADE_RADIUS)),
+		"damage": int(grenade_runtime.get("damage", Tuning.GRENADE_DAMAGE)),
 		"knockback": Tuning.GRENADE_KNOCKBACK,
 	})
 	grenade.bounced.connect(func(position: Vector2, strength: float) -> void:

@@ -115,6 +115,8 @@ var boss_ui_state := BossUIState.HIDDEN
 var ui_scale_percent := 100
 var controls_auto_hide_enabled := true
 var survival_mode_enabled := false
+var _survival_build_text := "NO UPGRADES"
+var _survival_final_modifiers: Dictionary = {}
 
 var _banner_tween: Tween
 var _boss_flow_tween: Tween
@@ -334,6 +336,7 @@ func set_survival_status(wave: int, total_waves: int, alive: int, pending: int, 
 		&"spawning": "INCOMING",
 		&"active": "ENGAGED",
 		&"rest": "INTERMISSION",
+		&"upgrade_selection": "UPGRADE SELECT",
 		&"boss": "IRON TEMPEST",
 		&"complete": "COMPLETE",
 		&"stopped": "RUN ENDED",
@@ -341,6 +344,28 @@ func set_survival_status(wave: int, total_waves: int, alive: int, pending: int, 
 	survival_state.text = "%s  •  %02d:%02d" % [state_label, int(ceil(countdown)) / 60, int(ceil(countdown)) % 60]
 	var elapsed_seconds := int(elapsed)
 	survival_stats.text = "HOSTILES %02d  •  QUEUED %02d  •  KILLS %03d  •  TIME %02d:%02d" % [alive, pending, kills, elapsed_seconds / 60, elapsed_seconds % 60]
+
+
+func set_survival_build_summary(build: Array[Dictionary], final_modifiers: Dictionary) -> void:
+	var parts: Array[String] = []
+	for item in build:
+		parts.append("%s x%d" % [str(item.get("display_name", item.get("id", "UPGRADE"))), int(item.get("stacks", 0))])
+	_survival_build_text = "NO UPGRADES" if parts.is_empty() else "  •  ".join(parts)
+	_survival_final_modifiers = final_modifiers.duplicate(true)
+
+
+func _survival_parameter_text(modifiers: Dictionary = _survival_final_modifiers) -> String:
+	if modifiers.is_empty():
+		return "BASE PARAMETERS"
+	return "HP %d  STAM %.0f  SPRINT %.0f  ROLL %.2fs  GRENADE %d / %.0fpx / %d" % [
+		int(modifiers.get("max_health", 100)),
+		float(modifiers.get("max_stamina", 100.0)),
+		float(modifiers.get("sprint_speed", 468.0)),
+		float(modifiers.get("roll_cooldown", 0.50)),
+		int(modifiers.get("grenade_capacity", 3)),
+		float(modifiers.get("grenade_radius", 110.0)),
+		int(modifiers.get("grenade_damage", 80)),
+	]
 
 
 func show_survival_death(wave: int, elapsed: float, kills: int, damage_source: String) -> void:
@@ -368,10 +393,19 @@ func show_survival_settlement(summary: Dictionary) -> void:
 	var elapsed_seconds := int(round(float(summary.get("elapsed", 0.0))))
 	var best_seconds := int(round(float(summary.get("best_time", 0.0))))
 	var weapon_kills: Dictionary = summary.get("weapon_kills", {})
-	state_subtitle.text = "10 WAVES CLEARED  •  SCORE %06d  •  TIME %02d:%02d\nKILLS %03d  •  BEST COMBO %02d  •  ROLL EVADES %02d\nAUTO %02d  SCATTER %02d  LANCE %02d  SIDE %02d  GRENADE %02d\nRECORD %06d  •  BEST TIME %02d:%02d" % [
+	var build_items: Array = summary.get("upgrade_build", []) as Array
+	var build_parts: Array[String] = []
+	for item_value in build_items:
+		var item: Dictionary = item_value
+		build_parts.append("%s x%d" % [str(item.get("display_name", item.get("id", "UPGRADE"))), int(item.get("stacks", 0))])
+	var build_text := "NONE" if build_parts.is_empty() else "  •  ".join(build_parts)
+	var final_text := _survival_parameter_text(summary.get("upgrade_final_modifiers", {}) as Dictionary)
+	state_subtitle.text = "10 WAVES CLEARED  •  SCORE %06d  •  TIME %02d:%02d\nKILLS %03d  •  BEST COMBO %02d  •  ROLL EVADES %02d\nAUTO %02d  SCATTER %02d  LANCE %02d  SIDE %02d  GRENADE %02d\nBUILD // %s\nFINAL // %s\nRECORD %06d  •  BEST TIME %02d:%02d" % [
 		int(summary.get("score", 0)), elapsed_seconds / 60, elapsed_seconds % 60,
 		int(summary.get("kills", 0)), int(summary.get("highest_combo", 0)), int(summary.get("roll_evades", 0)),
 		int(weapon_kills.get(&"rifle", 0)), int(weapon_kills.get(&"shotgun", 0)), int(weapon_kills.get(&"sniper", 0)), int(weapon_kills.get(&"pistol", 0)), int(summary.get("grenade_kills", 0)),
+		build_text,
+		final_text,
 		int(summary.get("best_score", 0)), best_seconds / 60, best_seconds % 60,
 	]
 	primary_button.text = "REPLAY SURVIVAL"
@@ -661,7 +695,7 @@ func toggle_pause() -> void:
 		_overlay_mode = &"pause"
 		state_title.text = "PAUSED"
 		state_title.modulate = Style.GOLD
-		state_subtitle.text = "MOVE A/D  •  JUMP SPACE  •  AIM MOUSE\nFIRE LMB/J  •  WEAPONS 1—4  •  RELOAD R"
+		state_subtitle.text = "MOVE A/D  •  JUMP SPACE  •  AIM MOUSE\nFIRE LMB/J  •  WEAPONS 1—4  •  RELOAD R" + ("\nBUILD // %s\n%s" % [_survival_build_text, _survival_parameter_text()] if survival_mode_enabled else "")
 		primary_button.text = "CONTINUE"
 		secondary_button.text = "RESTART SURVIVAL" if survival_mode_enabled else "RESTART MISSION"
 		secondary_button.visible = true

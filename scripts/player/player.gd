@@ -97,6 +97,14 @@ var airborne_speed_cap := Tuning.PLAYER_MAX_SPEED
 var sprint_air_visual := false
 var sprint_land_remaining := 0.0
 var _airborne_initialized := false
+var runtime_max_health := Tuning.PLAYER_MAX_HEALTH
+var runtime_max_stamina := Tuning.PLAYER_MAX_STAMINA
+var runtime_stamina_drain := Tuning.PLAYER_STAMINA_DRAIN_PER_SECOND
+var runtime_sprint_speed := Tuning.PLAYER_SPRINT_SPEED
+var runtime_roll_cooldown := Tuning.PLAYER_ROLL_COOLDOWN
+var runtime_grenade_capacity := Tuning.PLAYER_GRENADE_COUNT
+var runtime_grenade_radius := Tuning.GRENADE_RADIUS
+var runtime_grenade_damage := Tuning.GRENADE_DAMAGE
 
 var ammo: int:
 	get:
@@ -118,12 +126,12 @@ func _ready() -> void:
 	weapon_inventory.reload_stage.connect(func(stage: StringName, weapon_id: StringName) -> void:
 		reload_stage.emit(stage, weapon_id)
 	)
-	health_changed.emit(health, MAX_HEALTH)
+	health_changed.emit(health, runtime_max_health)
 	_on_weapon_changed(weapon_inventory.current_weapon_id, weapon_inventory.get_current_data())
 	visual.reset_visual()
 	visual.set_aim_direction(aim_direction, facing_direction)
 	ammo_changed.emit(ammo, int(weapon_inventory.get_current_data()["magazine_size"]), false)
-	grenade_count_changed.emit(grenade_count, Tuning.PLAYER_GRENADE_COUNT)
+	grenade_count_changed.emit(grenade_count, runtime_grenade_capacity)
 	stamina_bar.reset_full()
 
 
@@ -194,7 +202,7 @@ func _physics_process(delta: float) -> void:
 	_update_sprint_request(grounded_before_move)
 
 	if grounded_before_move and is_sprinting:
-		velocity.x = HorizontalMotion.advance_sprint_velocity(velocity.x, movement_intent, delta)
+		velocity.x = HorizontalMotion.advance_sprint_velocity(velocity.x, movement_intent, delta, runtime_sprint_speed)
 	elif grounded_before_move and _sprint_decelerating:
 		velocity.x = HorizontalMotion.advance_after_sprint_velocity(velocity.x, movement_intent, delta)
 		if absf(velocity.x) <= Tuning.PLAYER_MAX_SPEED + 0.1 or velocity.x * movement_intent <= 0.0:
@@ -202,7 +210,7 @@ func _physics_process(delta: float) -> void:
 	elif grounded_before_move:
 		velocity.x = HorizontalMotion.advance_velocity(velocity.x, movement_intent, delta)
 	else:
-		velocity.x = HorizontalMotion.advance_airborne_velocity(velocity.x, movement_intent, delta, airborne_speed_cap, launched_from_sprint)
+		velocity.x = HorizontalMotion.advance_airborne_velocity(velocity.x, movement_intent, delta, airborne_speed_cap, launched_from_sprint, runtime_sprint_speed)
 	current_move_speed = absf(velocity.x)
 	if not is_on_floor():
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL_SPEED)
@@ -252,7 +260,7 @@ func _begin_airborne(horizontal_speed: float, sprint_launch: bool) -> void:
 	_airborne_initialized = true
 	launched_from_sprint = sprint_launch
 	airborne_entry_speed = horizontal_speed
-	airborne_speed_cap = clampf(absf(horizontal_speed), Tuning.PLAYER_MAX_SPEED, Tuning.PLAYER_SPRINT_JUMP_SPEED_CAP) if sprint_launch else Tuning.PLAYER_MAX_SPEED
+	airborne_speed_cap = clampf(absf(horizontal_speed), Tuning.PLAYER_MAX_SPEED, runtime_sprint_speed) if sprint_launch else Tuning.PLAYER_MAX_SPEED
 	sprint_air_visual = sprint_launch
 	if sprint_launch:
 		_stop_sprint(&"airborne", true)
@@ -329,7 +337,7 @@ func _stop_sprint(reason: StringName, preserve_momentum: bool = false) -> void:
 func _update_stamina(delta: float, actual_x_distance: float, grounded_before_move: bool) -> void:
 	if is_sprinting and grounded_before_move:
 		if actual_x_distance > Tuning.PLAYER_SPRINT_WALL_DISTANCE_EPSILON:
-			current_stamina = maxf(current_stamina - Tuning.PLAYER_STAMINA_DRAIN_PER_SECOND * delta, 0.0)
+			current_stamina = maxf(current_stamina - runtime_stamina_drain * delta, 0.0)
 			stamina_regen_delay_remaining = Tuning.PLAYER_STAMINA_REGEN_DELAY
 			if is_zero_approx(current_stamina):
 				exhausted = true
@@ -338,8 +346,8 @@ func _update_stamina(delta: float, actual_x_distance: float, grounded_before_mov
 		elif is_on_wall() and movement_intent * get_wall_normal().x < -0.1:
 			_stop_sprint(&"wall")
 		return
-	if current_stamina >= Tuning.PLAYER_MAX_STAMINA:
-		current_stamina = Tuning.PLAYER_MAX_STAMINA
+	if current_stamina >= runtime_max_stamina:
+		current_stamina = runtime_max_stamina
 		stamina_regen_delay_remaining = 0.0
 		return
 	if not alive or not controls_enabled or is_rolling or _hurt_sprint_block_remaining > 0.0:
@@ -350,7 +358,7 @@ func _update_stamina(delta: float, actual_x_distance: float, grounded_before_mov
 	var regen_multiplier := Tuning.PLAYER_STAMINA_AIR_REGEN_MULTIPLIER if not is_on_floor() else 1.0
 	if grenade_charging:
 		regen_multiplier *= Tuning.PLAYER_STAMINA_GRENADE_REGEN_MULTIPLIER
-	current_stamina = minf(current_stamina + Tuning.PLAYER_STAMINA_REGEN_PER_SECOND * regen_multiplier * delta, Tuning.PLAYER_MAX_STAMINA)
+	current_stamina = minf(current_stamina + Tuning.PLAYER_STAMINA_REGEN_PER_SECOND * regen_multiplier * delta, runtime_max_stamina)
 	if exhausted and current_stamina >= Tuning.PLAYER_STAMINA_RESTART_THRESHOLD:
 		exhausted = false
 
@@ -423,7 +431,7 @@ func _end_roll(start_cooldown: bool = true) -> void:
 	roll_remaining = 0.0
 	velocity.x = clampf(velocity.x, -Tuning.PLAYER_MAX_SPEED, Tuning.PLAYER_MAX_SPEED)
 	if start_cooldown:
-		roll_cooldown_remaining = Tuning.PLAYER_ROLL_COOLDOWN
+		roll_cooldown_remaining = runtime_roll_cooldown
 	roll_finished.emit(global_position + Vector2(0, 30))
 
 
@@ -483,7 +491,7 @@ func _release_grenade() -> bool:
 	grenade_throw_remaining = 0.18
 	grenade_charge_indicator.hide_charge()
 	grenade_trajectory_preview.hide_prediction()
-	grenade_count_changed.emit(grenade_count, Tuning.PLAYER_GRENADE_COUNT)
+	grenade_count_changed.emit(grenade_count, runtime_grenade_capacity)
 	grenade_requested.emit(origin, predicted_throw_velocity, release_charge)
 	return true
 
@@ -541,6 +549,33 @@ func cancel_transient_actions() -> void:
 	roll_cooldown_remaining = 0.0
 	grenade_throw_remaining = 0.0
 	_cancel_grenade_charge()
+
+
+func apply_run_upgrade_modifiers(modifiers: Dictionary = {}, selection_effects: Dictionary = {}) -> void:
+	var previous_max_health := runtime_max_health
+	var previous_max_stamina := runtime_max_stamina
+	runtime_max_health = clampi(int(modifiers.get("max_health", Tuning.PLAYER_MAX_HEALTH)), Tuning.PLAYER_MAX_HEALTH, Tuning.PLAYER_MAX_HEALTH + 45)
+	runtime_max_stamina = clampf(float(modifiers.get("max_stamina", Tuning.PLAYER_MAX_STAMINA)), Tuning.PLAYER_MAX_STAMINA, Tuning.PLAYER_MAX_STAMINA + 60.0)
+	runtime_stamina_drain = clampf(float(modifiers.get("stamina_drain", Tuning.PLAYER_STAMINA_DRAIN_PER_SECOND)), Tuning.PLAYER_STAMINA_DRAIN_PER_SECOND * 0.60, Tuning.PLAYER_STAMINA_DRAIN_PER_SECOND)
+	runtime_sprint_speed = clampf(float(modifiers.get("sprint_speed", Tuning.PLAYER_SPRINT_SPEED)), Tuning.PLAYER_SPRINT_SPEED, Tuning.PLAYER_SPRINT_SPEED * 1.14)
+	runtime_roll_cooldown = clampf(float(modifiers.get("roll_cooldown", Tuning.PLAYER_ROLL_COOLDOWN)), 0.25, Tuning.PLAYER_ROLL_COOLDOWN)
+	runtime_grenade_capacity = clampi(int(modifiers.get("grenade_capacity", Tuning.PLAYER_GRENADE_COUNT)), Tuning.PLAYER_GRENADE_COUNT, Tuning.PLAYER_GRENADE_COUNT + 2)
+	runtime_grenade_radius = clampf(float(modifiers.get("grenade_radius", Tuning.GRENADE_RADIUS)), Tuning.GRENADE_RADIUS, Tuning.GRENADE_RADIUS * 1.45)
+	runtime_grenade_damage = clampi(int(modifiers.get("grenade_damage", Tuning.GRENADE_DAMAGE)), Tuning.GRENADE_DAMAGE, int(round(Tuning.GRENADE_DAMAGE * 1.45)))
+	if previous_max_health != runtime_max_health:
+		health = mini(health, runtime_max_health)
+	if previous_max_stamina != runtime_max_stamina:
+		current_stamina = minf(current_stamina, runtime_max_stamina)
+	health = mini(health + int(selection_effects.get("health_restore", 0)), runtime_max_health)
+	current_stamina = minf(current_stamina + float(selection_effects.get("stamina_restore", 0.0)), runtime_max_stamina)
+	grenade_count = mini(grenade_count + int(selection_effects.get("grenade_restore", 0)), runtime_grenade_capacity)
+	weapon_inventory.set_runtime_modifiers(modifiers.get("weapon_modifiers", {}) as Dictionary)
+	health_changed.emit(health, runtime_max_health)
+	grenade_count_changed.emit(grenade_count, runtime_grenade_capacity)
+
+
+func get_grenade_runtime_data() -> Dictionary:
+	return {"radius": runtime_grenade_radius, "damage": runtime_grenade_damage}
 
 
 func _update_aim() -> void:
@@ -669,8 +704,8 @@ func _animate_visual(delta: float) -> void:
 	visual.facing_direction = facing_direction
 	var roll_progress := 1.0 - roll_remaining / maxf(Tuning.PLAYER_ROLL_DURATION, 0.001) if is_rolling else 0.0
 	visual.update_pose(delta, velocity, is_on_floor(), movement_intent, aim_direction, _landing_feedback_remaining, is_rolling, roll_progress, grenade_charging, grenade_throw_remaining, grenade_charge, is_sprinting, sprint_air_visual, sprint_land_remaining > 0.0)
-	var recovering := current_stamina < Tuning.PLAYER_MAX_STAMINA and stamina_regen_delay_remaining <= 0.0 and not is_sprinting and not is_rolling and _hurt_sprint_block_remaining <= 0.0
-	stamina_bar.set_state(current_stamina, Tuning.PLAYER_MAX_STAMINA, is_sprinting, exhausted, recovering)
+	var recovering := current_stamina < runtime_max_stamina and stamina_regen_delay_remaining <= 0.0 and not is_sprinting and not is_rolling and _hurt_sprint_block_remaining <= 0.0
+	stamina_bar.set_state(current_stamina, runtime_max_stamina, is_sprinting, exhausted, recovering)
 
 
 func _on_landed(fall_speed: float) -> void:
@@ -713,10 +748,10 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vec
 	last_damage_source = str(context.get("source", "unknown"))
 	velocity += impulse
 	_invulnerability_remaining = 0.48
-	health_changed.emit(health, MAX_HEALTH)
+	health_changed.emit(health, runtime_max_health)
 	hurt.emit(amount)
 	damage_received.emit(amount, context.duplicate(true))
-	if health > 0 and health <= int(MAX_HEALTH * 0.25) and not _low_health_announced:
+	if health > 0 and health <= int(runtime_max_health * 0.25) and not _low_health_announced:
 		_low_health_announced = true
 		low_health.emit()
 	_flash_hurt()
@@ -727,18 +762,18 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vec
 func apply_field_resupply(health_amount: int, ammo_floor_ratio: float, grenade_amount: int = 0) -> void:
 	if not alive:
 		return
-	health = mini(health + maxi(health_amount, 0), MAX_HEALTH)
-	_low_health_announced = health <= int(MAX_HEALTH * 0.25)
+	health = mini(health + maxi(health_amount, 0), runtime_max_health)
+	_low_health_announced = health <= int(runtime_max_health * 0.25)
 	weapon_inventory.refill_to_floor(ammo_floor_ratio)
 	add_grenades(grenade_amount)
-	health_changed.emit(health, MAX_HEALTH)
+	health_changed.emit(health, runtime_max_health)
 
 
 func add_grenades(amount: int) -> void:
 	if amount <= 0:
 		return
-	grenade_count = mini(grenade_count + amount, Tuning.PLAYER_GRENADE_COUNT)
-	grenade_count_changed.emit(grenade_count, Tuning.PLAYER_GRENADE_COUNT)
+	grenade_count = mini(grenade_count + amount, runtime_grenade_capacity)
+	grenade_count_changed.emit(grenade_count, runtime_grenade_capacity)
 
 
 func _flash_hurt() -> void:
@@ -794,8 +829,8 @@ func get_debug_snapshot() -> Dictionary:
 		"predicted_throw_velocity": predicted_throw_velocity,
 		"is_sprinting": is_sprinting,
 		"current_stamina": current_stamina,
-		"max_stamina": Tuning.PLAYER_MAX_STAMINA,
-		"drain_rate": Tuning.PLAYER_STAMINA_DRAIN_PER_SECOND,
+		"max_stamina": runtime_max_stamina,
+		"drain_rate": runtime_stamina_drain,
 		"regen_delay_remaining": stamina_regen_delay_remaining,
 		"regen_rate": Tuning.PLAYER_STAMINA_REGEN_PER_SECOND,
 		"exhausted": exhausted,
@@ -806,4 +841,10 @@ func get_debug_snapshot() -> Dictionary:
 		"airborne_speed_cap": airborne_speed_cap,
 		"sprint_air_visual": sprint_air_visual,
 		"sprint_land_remaining": sprint_land_remaining,
+		"runtime_max_health": runtime_max_health,
+		"runtime_sprint_speed": runtime_sprint_speed,
+		"runtime_roll_cooldown": runtime_roll_cooldown,
+		"runtime_grenade_capacity": runtime_grenade_capacity,
+		"runtime_grenade_radius": runtime_grenade_radius,
+		"runtime_grenade_damage": runtime_grenade_damage,
 	}

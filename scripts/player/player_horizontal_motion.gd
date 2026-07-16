@@ -13,12 +13,12 @@ static func advance_velocity(current_velocity: float, input_axis: float, delta: 
 	return _advance(current_velocity, input_axis, delta, MAX_SPEED, ACCELERATION, DECELERATION, TURN_ACCELERATION)
 
 
-static func advance_sprint_velocity(current_velocity: float, input_axis: float, delta: float) -> float:
+static func advance_sprint_velocity(current_velocity: float, input_axis: float, delta: float, sprint_speed: float = SPRINT_MAX_SPEED) -> float:
 	return _advance(
 		current_velocity,
 		input_axis,
 		delta,
-		SPRINT_MAX_SPEED,
+		maxf(sprint_speed, MAX_SPEED),
 		Tuning.PLAYER_SPRINT_ACCELERATION,
 		Tuning.PLAYER_SPRINT_DECELERATION,
 		Tuning.PLAYER_SPRINT_ACCELERATION,
@@ -49,13 +49,13 @@ static func advance_air_velocity(current_velocity: float, input_axis: float, del
 	)
 
 
-static func advance_airborne_velocity(current_velocity: float, input_axis: float, delta: float, speed_cap: float, sprint_launch: bool) -> float:
+static func advance_airborne_velocity(current_velocity: float, input_axis: float, delta: float, speed_cap: float, sprint_launch: bool, maximum_sprint_cap: float = Tuning.PLAYER_SPRINT_JUMP_SPEED_CAP) -> float:
 	if not sprint_launch:
 		return advance_air_velocity(current_velocity, input_axis, delta)
 	var clamped_axis := clampf(input_axis, -1.0, 1.0)
 	if is_zero_approx(clamped_axis):
 		return move_toward(current_velocity, 0.0, Tuning.PLAYER_SPRINT_JUMP_AIR_DRAG * delta)
-	var cap := clampf(absf(speed_cap), MAX_SPEED, Tuning.PLAYER_SPRINT_JUMP_SPEED_CAP)
+	var cap := clampf(absf(speed_cap), MAX_SPEED, maxf(maximum_sprint_cap, MAX_SPEED))
 	var rate := Tuning.PLAYER_SPRINT_JUMP_AIR_ACCELERATION
 	if current_velocity * clamped_axis < 0.0:
 		rate = Tuning.PLAYER_SPRINT_JUMP_AIR_REVERSE_ACCELERATION

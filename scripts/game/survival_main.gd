@@ -5,6 +5,8 @@ const SurvivalWaveData := preload("res://scripts/survival/survival_wave_data.gd"
 const SpawnWarningScript := preload("res://scripts/survival/spawn_warning.gd")
 const SurvivalArenaArtScript := preload("res://scripts/survival/survival_arena_art.gd")
 const SurvivalBalanceTelemetryScript := preload("res://scripts/debug/survival_balance_telemetry.gd")
+const RunUpgradeManagerScript := preload("res://scripts/survival/run_upgrade_manager.gd")
+const SurvivalUpgradeOverlayScript := preload("res://scripts/ui/survival_upgrade_overlay.gd")
 
 const ARENA_LEFT := 16.0
 const ARENA_RIGHT := 1264.0
@@ -24,6 +26,9 @@ var weapon_kills := {
 }
 var grenade_kills := 0
 var survival_balance_telemetry: Node
+var upgrade_manager: RunUpgradeManager
+var upgrade_overlay: SurvivalUpgradeOverlay
+var upgrade_layer: CanvasLayer
 var best_score := 0
 var best_time := 0.0
 var _spawn_positions: Dictionary = {}
@@ -66,6 +71,8 @@ func _ready() -> void:
 	add_child(wave_manager)
 	var waves := SurvivalWaveData.phase_a_waves() if bool(get_meta("survival_phase_a_test", false)) else SurvivalWaveData.full_waves()
 	wave_manager.configure(waves, 6)
+	if not bool(get_meta("survival_phase_a_test", false)):
+		wave_manager.configure_upgrades([2, 4, 6, 8])
 	if bool(get_meta("survival_test_mode", false)):
 		wave_manager.set_debug_timings(0.03, 0.04, 0.02, 0.01)
 	wave_manager.wave_started.connect(_on_survival_wave_started)
@@ -73,9 +80,25 @@ func _ready() -> void:
 	wave_manager.spawn_requested.connect(_on_survival_spawn_requested)
 	wave_manager.counters_changed.connect(_on_survival_counters_changed)
 	wave_manager.rest_started.connect(_on_survival_rest_started)
+	wave_manager.upgrade_requested.connect(_on_survival_upgrade_requested)
 	wave_manager.wave_completed.connect(_on_survival_wave_completed)
 	wave_manager.boss_requested.connect(_on_survival_boss_requested)
 	wave_manager.run_completed.connect(_on_survival_run_completed)
+	upgrade_manager = RunUpgradeManagerScript.new()
+	upgrade_manager.name = "RunUpgradeManager"
+	add_child(upgrade_manager)
+	var upgrade_seed := int(get_meta("survival_upgrade_seed", 0))
+	upgrade_manager.configure(player, upgrade_seed)
+	upgrade_manager.upgrade_applied.connect(_on_survival_upgrade_applied)
+	upgrade_layer = CanvasLayer.new()
+	upgrade_layer.name = "UpgradeLayer"
+	# Keep the cards above the world but below the existing HUD pause layer.
+	upgrade_layer.layer = 9
+	add_child(upgrade_layer)
+	upgrade_overlay = SurvivalUpgradeOverlayScript.new()
+	upgrade_overlay.name = "SurvivalUpgradeOverlay"
+	upgrade_layer.add_child(upgrade_overlay)
+	upgrade_overlay.upgrade_chosen.connect(_on_survival_upgrade_chosen)
 	if OS.is_debug_build() and not bool(get_meta("survival_test_mode", false)):
 		survival_balance_telemetry = SurvivalBalanceTelemetryScript.new()
 		survival_balance_telemetry.name = "SurvivalBalanceTelemetry"
@@ -212,6 +235,68 @@ func _on_survival_counters_changed(wave_number: int, total: int, alive_count: in
 	_refresh_survival_hud()
 
 
+func _on_survival_upgrade_requested(completed_wave: int) -> void:
+	run_state = "upgrade_selection"
+	_clear_hostile_dangers()
+	for grenade in grenades.get_children():
+		grenade.queue_free()
+	player.cancel_transient_actions()
+	player.controls_enabled = false
+	var candidates := upgrade_manager.generate_candidates(3)
+	if candidates.is_empty():
+		player.controls_enabled = true
+		wave_manager.resume_after_upgrade()
+		return
+	upgrade_overlay.open(candidates)
+	hud.crosshair.visible = false
+	hud.set_survival_build_summary(upgrade_manager.get_build_summary(), upgrade_manager.calculate_final_modifiers())
+	hud.show_banner("WAVE %02d CLEAR // SELECT UPGRADE" % completed_wave, Color("62d8ff"), false, 0.75)
+	sfx.play_cue(&"ui_adjust")
+
+
+func _on_survival_upgrade_chosen(upgrade_id: StringName) -> void:
+	if run_state != "upgrade_selection" or not upgrade_manager.apply_candidate(upgrade_id):
+		return
+	upgrade_overlay.confirm_selection(upgrade_id)
+	sfx.play_cue(&"ui_confirm")
+	var delay := 0.01 if bool(get_meta("survival_test_mode", false)) else 0.18
+	await get_tree().create_timer(delay).timeout
+	if not is_instance_valid(upgrade_overlay) or run_state != "upgrade_selection":
+		return
+	upgrade_overlay.close()
+	hud.crosshair.visible = true
+	player.controls_enabled = true
+	wave_manager.resume_after_upgrade()
+
+
+func _on_survival_upgrade_applied(upgrade_id: StringName, stack_count: int, _final_modifiers: Dictionary) -> void:
+	var definition = upgrade_manager.get_definition(upgrade_id)
+	var upgrade_name: String = str(upgrade_id).to_upper() if definition == null else str(definition.display_name)
+	hud.set_survival_build_summary(upgrade_manager.get_build_summary(), upgrade_manager.calculate_final_modifiers())
+	hud.show_banner("%s // STACK %d" % [upgrade_name, stack_count], Color("fff4b8"), false, 0.8)
+
+
+func debug_open_upgrade_selection() -> bool:
+	if not OS.is_debug_build() or run_state in ["dead", "complete", "upgrade_selection"]:
+		return false
+	return wave_manager.debug_request_upgrade()
+
+
+func debug_add_upgrade(upgrade_id: StringName) -> bool:
+	return OS.is_debug_build() and upgrade_manager.apply_debug_upgrade(upgrade_id)
+
+
+func debug_clear_upgrades() -> void:
+	if OS.is_debug_build():
+		upgrade_manager.reset_run()
+		hud.set_survival_build_summary([], upgrade_manager.calculate_final_modifiers())
+
+
+func debug_set_upgrade_seed(seed_value: int) -> void:
+	if OS.is_debug_build():
+		upgrade_manager.set_random_seed(seed_value)
+
+
 func _refresh_survival_hud() -> void:
 	if hud == null or not is_instance_valid(hud):
 		return
@@ -332,6 +417,10 @@ func _on_player_died() -> void:
 	_restart_pending = true
 	run_state = "dead"
 	wave_manager.stop_run()
+	if upgrade_manager != null:
+		upgrade_manager.reset_run()
+	if upgrade_overlay != null:
+		upgrade_overlay.close()
 	_clear_survival_runtime(true)
 	sfx.stop_bus_cues(&"Boss")
 	if telemetry != null:
@@ -370,6 +459,9 @@ func _on_survival_run_completed() -> void:
 		"roll_evades": player.projectile_dodges,
 		"best_score": best_score,
 		"best_time": best_time,
+		"upgrade_history": upgrade_manager.selection_history.duplicate(),
+		"upgrade_build": upgrade_manager.get_build_summary(),
+		"upgrade_final_modifiers": upgrade_manager.calculate_final_modifiers(),
 	})
 	sfx.stop_music(0.45)
 	sfx.play_cue(&"mission_complete")
@@ -425,5 +517,13 @@ func _restart_scene() -> void:
 
 
 func _on_quit_requested() -> void:
+	if upgrade_manager != null:
+		upgrade_manager.reset_run()
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/menu/mode_select.tscn")
+
+
+func _on_pause_changed(paused: bool) -> void:
+	super._on_pause_changed(paused)
+	if not paused and run_state == "upgrade_selection":
+		hud.crosshair.visible = false
