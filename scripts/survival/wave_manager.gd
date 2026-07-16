@@ -7,6 +7,7 @@ signal spawn_warning_requested(ticket: int, kind: String, side: String, warning_
 signal spawn_requested(ticket: int, kind: String, side: String)
 signal counters_changed(wave_number: int, total_waves: int, alive: int, pending: int, countdown: float, state: StringName)
 signal rest_started(completed_wave: int, duration: float)
+signal upgrade_requested(completed_wave: int)
 signal wave_completed(wave_number: int)
 signal boss_requested(wave_number: int)
 signal run_completed
@@ -17,6 +18,7 @@ enum State {
 	SPAWNING,
 	ACTIVE,
 	REST,
+	UPGRADE_SELECTION,
 	BOSS,
 	COMPLETE,
 	STOPPED,
@@ -36,6 +38,7 @@ var batch_size := 99
 var reinforcement_delay := 0.0
 var countdown_remaining := 0.0
 var completed_waves: Array[int] = []
+var upgrade_waves: Array[int] = []
 
 var _waves: Array[Dictionary] = []
 var _pending: Array[Dictionary] = []
@@ -48,6 +51,8 @@ var _reinforcement_cooldown := 0.0
 var _spawned_this_batch := 0
 var _wave_completion_locked := false
 var _debug_timings_enabled := false
+var _debug_resume_state := -1
+var _debug_resume_countdown := 0.0
 
 
 func configure(waves: Array[Dictionary], active_limit: int = 6) -> void:
@@ -56,6 +61,11 @@ func configure(waves: Array[Dictionary], active_limit: int = 6) -> void:
 	max_active_enemies = maxi(active_limit, 1)
 	configured_active_limit = max_active_enemies
 	configured_spawn_interval = spawn_interval
+
+
+func configure_upgrades(wave_numbers: Array[int]) -> void:
+	upgrade_waves = wave_numbers.duplicate()
+	upgrade_waves.sort()
 
 
 func set_debug_timings(initial: float, rest: float, warning: float, interval: float) -> void:
@@ -93,6 +103,8 @@ func reset_run() -> void:
 	_reinforcement_cooldown = 0.0
 	_spawned_this_batch = 0
 	_wave_completion_locked = false
+	_debug_resume_state = -1
+	_debug_resume_countdown = 0.0
 
 
 func stop_run() -> void:
@@ -102,6 +114,33 @@ func stop_run() -> void:
 	countdown_remaining = 0.0
 	_set_state(State.STOPPED)
 	_emit_counters()
+
+
+func resume_after_upgrade() -> bool:
+	if state != State.UPGRADE_SELECTION:
+		return false
+	if _debug_resume_state >= 0:
+		var resume_state := _debug_resume_state
+		_debug_resume_state = -1
+		_set_state(resume_state)
+		countdown_remaining = _debug_resume_countdown
+		_debug_resume_countdown = 0.0
+		_emit_counters()
+		return true
+	_begin_rest()
+	return true
+
+
+func debug_request_upgrade() -> bool:
+	if not OS.is_debug_build() or state not in [State.COUNTDOWN, State.REST]:
+		return false
+	_debug_resume_state = state
+	_debug_resume_countdown = countdown_remaining
+	_set_state(State.UPGRADE_SELECTION)
+	countdown_remaining = 0.0
+	upgrade_requested.emit(current_wave)
+	_emit_counters()
+	return true
 
 
 func register_spawned(ticket: int, enemy: Node) -> void:
@@ -145,7 +184,25 @@ func boss_defeated() -> void:
 
 
 func get_state_name() -> StringName:
-	return [&"idle", &"countdown", &"spawning", &"active", &"rest", &"boss", &"complete", &"stopped"][state]
+	match state:
+		State.IDLE:
+			return &"idle"
+		State.COUNTDOWN:
+			return &"countdown"
+		State.SPAWNING:
+			return &"spawning"
+		State.ACTIVE:
+			return &"active"
+		State.REST:
+			return &"rest"
+		State.UPGRADE_SELECTION:
+			return &"upgrade_selection"
+		State.BOSS:
+			return &"boss"
+		State.COMPLETE:
+			return &"complete"
+		_:
+			return &"stopped"
 
 
 func get_alive_count() -> int:
@@ -281,6 +338,16 @@ func _complete_current_wave() -> void:
 	if current_wave >= total_waves:
 		_finish_run()
 		return
+	if upgrade_waves.has(current_wave):
+		_set_state(State.UPGRADE_SELECTION)
+		countdown_remaining = 0.0
+		upgrade_requested.emit(current_wave)
+		_emit_counters()
+		return
+	_begin_rest()
+
+
+func _begin_rest() -> void:
 	_set_state(State.REST)
 	countdown_remaining = intermission_duration
 	rest_started.emit(current_wave, intermission_duration)

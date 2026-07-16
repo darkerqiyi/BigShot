@@ -167,3 +167,13 @@ func _update_readout() -> void:
 			int(feedback_snapshot["accepted_shakes"]),
 			int(feedback_snapshot["merged_requests"]),
 		]
+	var upgrade_manager := get_node_or_null("../RunUpgradeManager")
+	if upgrade_manager != null and upgrade_manager.has_method("get_debug_snapshot"):
+		var upgrade_snapshot: Dictionary = upgrade_manager.get_debug_snapshot()
+		readout.text += "\n\nUPGRADES: %s  seed %d  pool %d\nCandidates: %s\nStacks: %s" % [
+			"SELECTING" if bool(upgrade_snapshot.get("selection_open", false)) else "runtime",
+			int(upgrade_snapshot.get("random_seed", 0)),
+			int(upgrade_snapshot.get("remaining_pool", 0)),
+			", ".join(upgrade_snapshot.get("candidate_ids", []) as Array),
+			JSON.stringify(upgrade_snapshot.get("stacks", {})),
+		]

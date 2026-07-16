@@ -17,6 +17,7 @@ func _run() -> void:
 		if argument.begins_with("--strategy="):
 			strategy = argument.trim_prefix("--strategy=")
 	var game := SurvivalScene.instantiate()
+	game.set_meta("survival_upgrade_seed", 1337 if strategy == "mixed" else 7331)
 	root.add_child(game)
 	current_scene = game
 	for _frame in range(6):
@@ -66,6 +67,9 @@ func _run() -> void:
 	var no_kill_elapsed := 0.0
 	while is_instance_valid(game) and game.run_state != "complete" and game._run_elapsed < 900.0:
 		frame_count += 1
+		if game.wave_manager.get_state_name() == &"upgrade_selection" and game.upgrade_manager.selection_open:
+			var choice_index: int = game.upgrade_manager.selection_history.size() % game.upgrade_manager.current_candidates.size() if strategy == "mixed" else 0
+			game._on_survival_upgrade_chosen(StringName(game.upgrade_manager.current_candidates[choice_index]["id"]))
 		# Keep the deterministic validation bot alive; damage delivery itself remains active.
 		# Heal between physics steps so real damage events and their source remain
 		# observable without making this deterministic acceptance bot mortal.
@@ -135,6 +139,7 @@ func _run() -> void:
 	_expect(int(snapshot["max_active_enemies"]) <= 6, "scripted survival exceeded the six-enemy active cap")
 	_expect(int(snapshot["roll"]["successes"]) >= 1, "survival telemetry did not record the roll")
 	_expect(int(snapshot["grenades"]["throws"]) >= 1, "survival telemetry did not record the grenade")
+	_expect(game.upgrade_manager.selection_history.size() == 4, "scripted survival did not select four run upgrades")
 	if strategy == "mixed":
 		_expect(int(snapshot["grenades"]["damage"]) > 0, "mixed survival route did not produce real grenade damage")
 	print("SURVIVAL_SCRIPTED_METRICS %s" % JSON.stringify({
@@ -150,6 +155,7 @@ func _run() -> void:
 		"grenades": snapshot["grenades"]["throws"],
 		"damage_events": snapshot["damage_events"],
 		"damage_sources": snapshot["damage_sources"],
+		"build": game.upgrade_manager.selection_history,
 	}))
 	_finish()
 
