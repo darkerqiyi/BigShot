@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/enemies/enemy.gd" id="1_enemy"]
 [ext_resource type="Script" path="res://scripts/enemies/enemy_pixel_visual.gd" id="2_visual"]
@@ -6,6 +6,9 @@
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_enemy"]
 size = Vector2(38, 58)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_head"]
+size = Vector2(24, 18)
 
 [node name="Enemy" type="CharacterBody2D"]
 collision_layer = 4
@@ -16,6 +19,16 @@ script = ExtResource("1_enemy")
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(0, 3)
 shape = SubResource("RectangleShape2D_enemy")
+
+[node name="HeadHurtbox" type="Area2D" parent="."]
+position = Vector2(0, -21)
+collision_layer = 16
+collision_mask = 0
+monitoring = false
+metadata/_edit_group_ = true
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="HeadHurtbox"]
+shape = SubResource("RectangleShape2D_head")
 
 [node name="EnemyVisual" type="Node2D" parent="."]
 script = ExtResource("2_visual")

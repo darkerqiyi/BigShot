@@ -211,16 +211,16 @@ Status: **Pass for automated stability and pressure gates; human 8–15 minute b
 
 - The project boots to a mode selector. PVE still loads `scenes/main/main.tscn`; survival independently loads `scenes/survival/survival.tscn` and does not create the PVE mission gate, authored encounters, route hazards, or pickups.
 - `scripts/survival/wave_manager.gd` owns only wave lifecycle, capped spawning, countdowns, one-shot completion, and stop/reset behavior. `scripts/survival/survival_wave_data.gd` separately defines all ten compositions.
-- Four safe edge spawn points use a 360 px player exclusion distance, reject occupied spawn points inside 96 px, show a 0.55-second warning, and retain 0.48-second attack protection. Per-wave active caps rise 3→6 while data-driven deployment intervals and 2–5 unit reinforcement batches replace the old uniform rush.
-- Waves 1–9 now contain 77 ordinary/elite hostiles across progressively richer assault/gunner/shield combinations; waves 5 and 9 include an elite. The first two waves allow one simultaneous primary attack and later ordinary waves retain the global cap of two. Wave 10 initializes the existing three-phase Iron Tempest with survival-local bounds and summon points while preserving PVE defaults.
-- Nine 10-second intermissions clear hostile projectiles/hazards. Waves 3/5/7 provide bounded field supplies and wave 9 grants the larger pre-Boss cache; health, magazine floors, and grenades remain capped by existing player rules.
+- Four safe edge spawn points use a 360 px player exclusion distance, reject occupied spawn points inside 96 px, show a 0.55-second warning, and retain 0.48-second attack protection. Per-wave active caps rise 4→7 while data-driven 0.42–0.62-second deployment intervals and 3–6 unit reinforcement batches replace the old uniform rush.
+- Waves 1–9 now contain 104 ordinary/elite hostiles across progressively richer assault/gunner/shield combinations; waves 5 and 9 include an elite. The first two waves allow one simultaneous primary attack and later ordinary waves retain the global cap of two. Wave 10 initializes the existing three-phase Iron Tempest with survival-local bounds and summon points while preserving PVE defaults.
+- Normal intermissions are 3.5 seconds; waves 5 and 9 retain 6 seconds for important supplies. Enter/Space can reduce a normal rest to a final one-second spawn warning, but cannot skip a pending upgrade choice. Every rest still clears hostile projectiles/hazards, and supplies remain capped by existing player rules.
 - Survival HUD reports wave, active/queued hostiles, countdown, kills, score, and elapsed time without replacing the existing Boss HUD. Death stops generation and clears all enemies, Boss state, projectiles, hazards, and grenades before a fresh scene reload.
 - Settlement reports score, time, kills, best combo, four-weapon kills, grenade kills, and roll projectile evades. `ConfigFile` stores only local highest score/best time; no account, cloud, leaderboard, or progression layer was added.
 - `scripts/debug/survival_balance_telemetry.gd` records debug-only per-wave time, composition, pressure, damage source, resources, weapon contribution, and grenade use. The full verifier runs both a four-weapon route and a rifle-only/high-frequency-roll pressure route, in addition to Phase-A, structural ten-wave, Boss-death reset, menu isolation, and all PVE gates.
 
 Current acceptance evidence:
 
-- Deterministic real-projectile automation completes all ten waves in 268.5 seconds with all four weapons and in 274.2 seconds with rifle-only plus 228 successful roll inputs. Both settle once, peak at two simultaneous attacks, and retain clean Boss/death/PVE reset contracts.
+- Repeated real-projectile automation completes all ten waves in 454.31–590.92 seconds with all four weapons and in 353.12–501.97 seconds with rifle-only pressure input. Every run settles once, peaks at two simultaneous attacks, stays at or below seven active enemies, and retains clean Boss/death/PVE reset contracts.
 - These accelerated bots fire with near-perfect aim and heal between physics steps so real damage sources remain observable; they are regression/pressure evidence, not human completion-time evidence. One timed human clear, one exploit-focused human clear, and a physical-controller run remain required before approving the 8–15 minute target or final upgrade balance.
 
 ### Lightweight in-run Roguelite upgrade system
@@ -239,8 +239,19 @@ Current acceptance evidence:
 
 - `survival_upgrade_test.gd` passes the three-card wave-two loop, pause/input isolation, all 32 legal stacks across twelve definitions, max-stack pool exclusion, runtime safety bounds, grenade visual/damage synchronization, and complete reset.
 - `survival_ten_wave_test.gd` triggers exactly once after waves 2/4/6/8, never after wave 10, reaches Boss settlement once, clears the Build on death/restart, and confirms PVE base parameters.
-- Two deterministic real-projectile ten-wave routes complete in 270.69 and 276.32 simulated seconds. The mixed route chooses EXTRA ORDNANCE, MOMENTUM MODULE, QUICK RELOAD, and EFFICIENT DRIVE; the rifle-only pressure route chooses LANCE PENETRATION, MOMENTUM MODULE, HIGH EXPLOSIVE, and MOMENTUM MODULE. Both settle with four valid choices and no persistent upgrade state.
+- The post-durability routes complete in 454.31–590.92 seconds mixed and 353.12–501.97 seconds rifle-only pressure. The mixed route chooses EXTRA ORDNANCE, MOMENTUM MODULE, QUICK RELOAD, and EFFICIENT DRIVE; the rifle route chooses LANCE PENETRATION, MOMENTUM MODULE, HIGH EXPLOSIVE, and MOMENTUM MODULE. Both settle with four valid choices and no persistent upgrade state.
 - These routes prove lifecycle, input, damage-path, and regression contracts, but they do not prove that every card is equally desirable to a person. Human choice frequency, perceived card clarity, and dominant-Build risk remain the next acceptance boundary.
+
+### Survival durability, headshots, and damage-number readability
+
+Status: **Pass for automated damage/pacing/performance gates; human aiming/readability remains Partial** (2026-07-16).
+
+- `scripts/config/enemy_balance.gd` centralizes mode-aware durability. PVE retains the authored 44/58/92/230 health values while survival uses 192 assault, 216 gunner, 288 shield, and 1200 elite health; no behavior script or shared Resource is duplicated.
+- Ordinary and elite enemies have visual-following `HeadHurtbox` areas that never alter physical collision. A projectile resolves the most specific area once, applies the centralized 2.0 head multiplier after runtime weapon upgrades and before target mitigation, and excludes all target collision RIDs before penetration continues.
+- Shield-front blocking remains authoritative, explosions cannot headshot, and Iron Tempest keeps its existing armor/core rules. The final applied health loss is carried in one damage result used by telemetry, effects, and world-space numbers.
+- A bounded 64-label damage-number pool displays actual applied damage, gold enlarged headshots, and `BLOCK`; each target shows at most ten concurrent labels, with critical/high-priority feedback retained under display pressure. Presentation limits never suppress damage.
+- With the unchanged 24-damage rifle baseline, body/head shot counts are assault 8/4, gunner 9/5, shield 12/6 when unblocked, and elite 46/23 before the rifle's existing accent-round cadence. Repeated mixed automation finishes in 7:34–9:51; the high-frequency rifle/roll pressure route finishes in 5:53–8:22 depending mainly on shield positioning.
+- `survival_headshot_pacing_test.gd` locks real body/head damage, no body/head double application, shield/Boss/explosion rules, pool bounds and cleanup, centralized health, shot counts, and the 104-enemy wave curve.
 
 ### Phase 2 — Shooting, ballistics, and damage
 

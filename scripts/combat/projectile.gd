@@ -63,30 +63,48 @@ func _physics_process(delta: float) -> void:
 	var casts := 0
 	while casts < 8:
 		casts += 1
-		var query := PhysicsRayQueryParameters2D.create(cast_from, segment_end)
-		query.collision_mask = 5 if team == &"player" else 3
-		query.collide_with_areas = false
-		query.collide_with_bodies = true
-		query.exclude = _excluded_rids
-		var hit := get_world_2d().direct_space_state.intersect_ray(query)
+		var hit := _find_segment_hit(cast_from, segment_end)
 		if hit.is_empty():
 			break
-		var collider := hit["collider"] as Node
+		var raw_collider := hit["collider"] as Node
+		var collider := _damage_target_for(raw_collider)
 		var can_damage: bool = collider != null and ((team == &"player" and collider.is_in_group("enemies")) or (team == &"enemy" and collider.is_in_group("player")))
 		var hit_distance := distance_travelled + global_position.distance_to(hit["position"])
 		var applied_damage := 0
+		var base_damage_at_distance := 0
+		var hit_zone: StringName = hit.get("hit_zone", &"body")
+		var critical := false
+		var damage_result: Dictionary = {}
 		if can_damage and collider.has_method("take_damage"):
-			applied_damage = calculate_damage_at_distance(damage, hit_distance, falloff_start, max_range, minimum_damage_multiplier)
-			collider.take_damage(applied_damage, direction * knockback, hit["position"], {
+			base_damage_at_distance = calculate_damage_at_distance(damage, hit_distance, falloff_start, max_range, minimum_damage_multiplier)
+			var zone_context := {"direction": direction, "weapon_id": weapon_id}
+			if collider.has_method("resolve_hit_zone"):
+				hit_zone = collider.resolve_hit_zone(hit_zone, zone_context)
+			critical = team == &"player" and hit_zone == &"head" and not collider.is_in_group("boss")
+			var requested_damage := int(round(float(base_damage_at_distance) * (Tuning.HEADSHOT_MULTIPLIER if critical else 1.0)))
+			var health_before_value = collider.get("health")
+			var returned_result = collider.take_damage(requested_damage, direction * knockback, hit["position"], {
+				"attacker": self,
+				"base_damage": base_damage_at_distance,
 				"weapon_id": weapon_id,
 				"team": team,
 				"direction": direction,
 				"impact_strength": impact_strength,
 				"source": source_tag,
 				"damage_kind": &"projectile",
+				"hit_zone": hit_zone,
+				"critical": critical,
 			})
+			if returned_result is Dictionary:
+				damage_result = returned_result
+				applied_damage = int(damage_result.get("final_damage", 0))
+			elif health_before_value != null and collider.get("health") != null:
+				applied_damage = maxi(int(health_before_value) - int(collider.get("health")), 0)
 		var strength := impact_strength if can_damage else Tuning.TERRAIN_HIT_STRENGTH
-		impacted.emit(hit["position"], tint, strength)
+		if critical:
+			strength = maxf(strength, Tuning.ACCENT_HIT_STRENGTH)
+		var impact_color := Color("ffd35a") if critical else tint
+		impacted.emit(hit["position"], impact_color, strength)
 		var feedback: StringName = &"normal"
 		if can_damage and team == &"player":
 			var reported_feedback = collider.get("last_hit_feedback")
@@ -95,7 +113,9 @@ func _physics_process(delta: float) -> void:
 		var target_kind := "terrain"
 		if can_damage:
 			target_kind = "boss" if collider.is_in_group("boss") else (str(collider.get("kind")) if team == &"player" else "player")
-		impact_detailed.emit(hit["position"], tint, strength, {
+		impact_detailed.emit(hit["position"], impact_color, strength, {
+			"target": collider,
+			"target_id": collider.get_instance_id() if collider != null else 0,
 			"weapon_id": weapon_id,
 			"team": team,
 			"can_damage": can_damage,
@@ -104,6 +124,13 @@ func _physics_process(delta: float) -> void:
 			"distance": hit_distance,
 			"max_range": max_range,
 			"applied_damage": applied_damage,
+			"base_damage": base_damage_at_distance,
+			"final_damage": applied_damage,
+			"hit_zone": hit_zone,
+			"critical": critical,
+			"headshot": critical,
+			"blocked": bool(damage_result.get("blocked", false)),
+			"mitigation": int(damage_result.get("mitigation", 0)),
 			"feedback": feedback,
 			"penetration_index": _penetration_index,
 			"direction": direction,
@@ -116,7 +143,7 @@ func _physics_process(delta: float) -> void:
 			if not blocks_penetration and collider is CollisionObject2D:
 				penetration_remaining -= 1
 				_penetration_index += 1
-				_excluded_rids.append((collider as CollisionObject2D).get_rid())
+				_append_target_exclusions(collider)
 				cast_from = hit["position"] + direction * 2.0
 				continue
 		queue_free()
@@ -126,6 +153,58 @@ func _physics_process(delta: float) -> void:
 	lifetime -= delta
 	if lifetime <= 0.0 or distance_travelled >= max_range:
 		queue_free()
+
+
+func _find_segment_hit(cast_from: Vector2, segment_end: Vector2) -> Dictionary:
+	var solid_query := PhysicsRayQueryParameters2D.create(cast_from, segment_end)
+	solid_query.collision_mask = 5 if team == &"player" else 3
+	solid_query.collide_with_areas = false
+	solid_query.collide_with_bodies = true
+	solid_query.exclude = _excluded_rids
+	var solid_hit := get_world_2d().direct_space_state.intersect_ray(solid_query)
+	if team != &"player":
+		if not solid_hit.is_empty():
+			solid_hit["hit_zone"] = &"body"
+		return solid_hit
+	var head_query := PhysicsRayQueryParameters2D.create(cast_from, segment_end)
+	head_query.collision_mask = 16
+	head_query.collide_with_areas = true
+	head_query.collide_with_bodies = false
+	head_query.exclude = _excluded_rids
+	var head_hit := get_world_2d().direct_space_state.intersect_ray(head_query)
+	if head_hit.is_empty():
+		if not solid_hit.is_empty():
+			solid_hit["hit_zone"] = &"body"
+		return solid_hit
+	head_hit["hit_zone"] = &"head"
+	if solid_hit.is_empty():
+		return head_hit
+	var head_target := _damage_target_for(head_hit["collider"] as Node)
+	var solid_target := _damage_target_for(solid_hit["collider"] as Node)
+	if head_target != null and head_target == solid_target:
+		return head_hit
+	if cast_from.distance_to(head_hit["position"]) < cast_from.distance_to(solid_hit["position"]):
+		return head_hit
+	solid_hit["hit_zone"] = &"body"
+	return solid_hit
+
+
+func _damage_target_for(collider: Node) -> Node:
+	if collider == null:
+		return null
+	if collider is Area2D and collider.has_meta("damage_target"):
+		var target = collider.get_meta("damage_target")
+		if target is Node and is_instance_valid(target):
+			return target
+	return collider
+
+
+func _append_target_exclusions(target: Node) -> void:
+	if target is CollisionObject2D:
+		_excluded_rids.append((target as CollisionObject2D).get_rid())
+	var head := target.get_node_or_null("HeadHurtbox")
+	if head is CollisionObject2D:
+		_excluded_rids.append((head as CollisionObject2D).get_rid())
 
 
 static func calculate_damage_at_distance(base_damage: int, distance: float, start: float, end: float, minimum_multiplier: float) -> int:

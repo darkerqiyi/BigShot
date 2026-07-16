@@ -133,10 +133,17 @@ func _run() -> void:
 		if int(weapon_stats["shots"]) > 0 and int(weapon_stats["damage"]) > 0:
 			used_weapon_count += 1
 	_expect(game.run_state == "complete", "scripted survival playthrough did not clear ten waves")
-	var duration_in_band: bool = game._run_elapsed >= 180.0 and game._run_elapsed <= 420.0
+	# Mixed automation has near-perfect aim and heals between frames, so its
+	# 7-15 minute regression band sits below the 8-15 minute human target. The
+	# rifle-only probe also holds fire and rolls almost continuously; its lower
+	# 4-10 minute band detects stalls without pretending it is a new-player run;
+	# shield positioning intentionally produces wider timing variance here.
+	var minimum_duration := 240.0 if strategy == "rifle_only" else 420.0
+	var maximum_duration := 600.0 if strategy == "rifle_only" else 900.0
+	var duration_in_band: bool = game._run_elapsed >= minimum_duration and game._run_elapsed <= maximum_duration
 	_expect(duration_in_band, "simulated survival duration %.1fs was outside the strategy band for %s" % [game._run_elapsed, strategy])
 	_expect(used_weapon_count == (1 if strategy == "rifle_only" else 4), "weapon contribution count %d did not match strategy %s" % [used_weapon_count, strategy])
-	_expect(int(snapshot["max_active_enemies"]) <= 6, "scripted survival exceeded the six-enemy active cap")
+	_expect(int(snapshot["max_active_enemies"]) <= 7, "scripted survival exceeded the seven-enemy active cap")
 	_expect(int(snapshot["roll"]["successes"]) >= 1, "survival telemetry did not record the roll")
 	_expect(int(snapshot["grenades"]["throws"]) >= 1, "survival telemetry did not record the grenade")
 	_expect(game.upgrade_manager.selection_history.size() == 4, "scripted survival did not select four run upgrades")

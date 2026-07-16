@@ -256,6 +256,17 @@ if [[ -n "$filtered_errors" ]]; then
 fi
 grep "SURVIVAL_UPGRADE_PASS" "$LOG_DIR/survival_upgrade.log"
 
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_headshot_pacing_test.gd >"$LOG_DIR/survival_headshot.log" 2>&1; then
+	cat "$LOG_DIR/survival_headshot.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/survival_headshot.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SURVIVAL_HEADSHOT_PACING_PASS" "$LOG_DIR/survival_headshot.log"
+
 if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_ten_wave_test.gd >"$LOG_DIR/survival_ten.log" 2>&1; then
 	cat "$LOG_DIR/survival_ten.log" >&2
 	exit 1
@@ -299,4 +310,4 @@ if [[ -n "$filtered_errors" ]]; then
 	exit 1
 fi
 
-printf 'PROTOTYPE_VERIFY_PASS PVE regression, survival 3/10-wave upgrade loops, mode selection, abilities, scripted playthroughs, and 120-frame runtime checks passed\n'
+printf 'PROTOTYPE_VERIFY_PASS PVE regression, survival 3/10-wave upgrade/headshot loops, mode selection, abilities, scripted playthroughs, and 120-frame runtime checks passed\n'

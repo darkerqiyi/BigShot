@@ -10,6 +10,7 @@ const PROFILES := {
 	&"pistol_shot": {"shake": 0.002, "cap": 0.05, "hold": 0.0},
 	&"enemy_shot": {"shake": 0.0, "cap": 0.0, "hold": 0.0},
 	&"normal_hit": {"shake": 0.025, "cap": 0.18, "hold": 0.0},
+	&"headshot": {"shake": 0.018, "cap": 0.20, "hold": 0.008},
 	&"shotgun_hit": {"shake": 0.07, "cap": 0.28, "hold": 0.022},
 	&"sniper_hit": {"shake": 0.11, "cap": 0.36, "hold": 0.038},
 	&"heavy_hit": {"shake": 0.075, "cap": 0.30, "hold": 0.026},
