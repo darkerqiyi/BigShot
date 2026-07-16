@@ -38,9 +38,11 @@ Last updated: 2026-07-15 (Asia/Shanghai)
 
 **Roll/grenade refinement, reliability, and encounter adaptation — Pass for executable gates; human feel remains Partial.** The measured roll was shortened from 216.7 px to 107.7 px while preserving its exact post-action 0.50-second cooldown. Cooldown input caching, focused-UI input, grenade-cancel roll, safe grenade spawn, collision-truncated trajectory preview, partial movement inheritance, fuse warning, edge falloff, debug telemetry, finite resupply, and two short opening lessons are now covered by executable checks. Subjective double-tap comfort and live grenade hit rate remain human acceptance work.
 
-**Shift sprint and stamina — Pass for executable and captured visual gates; human/survival acceptance remains Partial.** Grounded Shift+A/D reaches 468 px/s (1.80x normal), drains 28 stamina/s only on real movement, exits at zero, waits 0.60 seconds before 22 stamina/s recovery, and requires 20% recovery after exhaustion. SprintStart/Loop/Stop are visual-only poses under `PlayerVisual`; the physics body never rotates. A world-space pixel stamina bar retracts from right to left and fades after full recovery. Shooting, reload, weapon selection, grenade, roll, jump, hurt, death, pause, focus, camera, walls, gates, and restart contracts are covered by `player_sprint_stamina_test.gd`. The current checkout has no playable survival-mode scene or runtime state, so survival-loop balance remains unverified rather than simulated.
+**Shift sprint and stamina — Pass for executable and captured visual gates; human feel remains Partial.** Grounded Shift+A/D reaches 468 px/s (1.80x normal), drains 28 stamina/s only on real movement, exits at zero, waits 0.60 seconds before 22 stamina/s recovery, and requires 20% recovery after exhaustion. SprintStart/Loop/Stop are visual-only poses under `PlayerVisual`; the physics body never rotates. A world-space pixel stamina bar retracts from right to left and fades after full recovery. Shooting, reload, weapon selection, grenade, roll, jump, hurt, death, pause, focus, camera, walls, gates, and restart contracts are covered by `player_sprint_stamina_test.gd`. The same controller now passes a complete survival run without mode-specific parameter changes.
 
 **Sprint-jump momentum integration — Pass for automated physics and regression gates; human feel remains Partial.** A sprint jump or sprint-speed platform exit preserves the measured launch velocity (468 px/s at full sprint) rather than immediately falling to the normal 260 px/s cap. Same-direction input maintains the launch cap, no-input drag is 170 px/s², reverse braking is 720 px/s², and non-sprint landing deceleration is 1400 px/s² (roughly 0.15 seconds from full sprint to normal cap). Ordinary air movement cannot acquire sprint speed by pressing Shift. SprintJump/Fall/Land poses and sprint camera forward view are presentation-only; firing and grenade charge retain physical momentum, roll remains ground-only, and sprint-air movement grants no damage immunity. `sprint_jump_momentum_test.gd` locks the ten-frame trace, ledge, landing, exhaustion, action, camera, and closed-gate contracts.
+
+**Independent base ten-wave survival mode — Pass for automated implementation and regression gates; human balance remains Partial.** The new mode selector preserves the complete PVE mission and opens a separate 1280×720 survival arena. A data-driven WaveManager runs ten one-shot waves with four safe warned spawn points, six-enemy live cap, ten-second pause-safe intermissions, limited wave 3/6/9 supplies, elite milestones on 5/9, and the existing three-phase Iron Tempest on wave 10. Death stops spawning and cleans enemies/Boss/projectiles/hazards/grenades before a fresh wave-zero reload. Victory reports score, survival time, kills, combo, firearm/grenade kills, and projectile roll evades while saving only local best score/time. The deterministic fixed-station real-weapon automation clears in 363.1 simulated seconds with all four weapons, one roll, one grenade, preserved 468 px/s sprint-jump velocity, and six peak active enemies; this is a reproducible automation baseline, not a human-duration claim. Roguelite upgrades are deliberately absent and remain the next separate stage.
 
 This does not mean every production roadmap phase is complete. Detailed crouch acceptance, formal camera tuning, human loudness/fatigue evaluation, checkpoints outside the Boss retry point, production sprite sheets, and measured human balance remain future work.
 
@@ -272,7 +274,7 @@ Primary command:
 Recorded output:
 
 ```text
-PHASE0_SMOKE_PASS Godot 4.7-stable (official); 14 input actions; main scene and debug overlay loaded
+PHASE0_SMOKE_PASS Godot 4.7-stable (official); 15 input actions; main scene and debug overlay loaded
 PHASE0_VERIFY_PASS smoke, main-scene boot, roadmap uniqueness, and source hygiene checks passed
 PHASE1_HORIZONTAL_PASS accel=0.167s stop=0.133s reverse_zero=0.100s reverse_90=0.250s max=260px/s
 PHASE1_HORIZONTAL_VERIFY_PASS Phase 0 regression and horizontal movement checks passed
@@ -294,7 +296,11 @@ AUDIO_SYSTEM_PASS eight buses, Master limiter, original level/Boss loops, four w
 RESTART_SMOKE_PASS phase-two death restored a clean full-resupply Boss checkpoint in about 1.6s, phase-one Boss/HUD/arena, no dangers or grenades, retained session audio mix
 COMBAT_PACING_PASS four gated multi-wave sectors, immediate unlock, stall recovery, two-telegraph cap, 520px readability, limited Boss cache
 SCRIPTED_PLAYTHROUGH_PASS expanded mission, four active weapon roles, gated waves, debug telemetry summary, encounter/Boss timings
-PROTOTYPE_VERIFY_PASS regression, combat pacing, mixed-weapon playthrough, and 120-frame runtime checks passed
+MODE_SELECT_PASS project boots to an accessible PVE/survival selector and both independent scenes load
+SURVIVAL_THREE_WAVE_PASS ordered waves, capped spawning, pause-safe countdown, unique kills, isolated HUD, death cleanup and restart
+SURVIVAL_TEN_WAVE_PASS data-driven composition, elite milestones, capped spawns, three-phase Boss, single settlement, cleanup and local records
+SURVIVAL_SCRIPTED_PASS ten-wave weapon playthrough, survival abilities and target-duration telemetry
+PROTOTYPE_VERIFY_PASS PVE regression, survival 3/10-wave loops, mode selection, abilities, scripted playthroughs, and 120-frame runtime checks passed
 ```
 
 Automated coverage includes all prior movement/camera/four-weapon contracts plus dormant activation, every enemy warning/recovery/damage rule, shield front/rear/opening behavior, elite area warning, idempotent death, Boss attack alternation, all three one-time thresholds, transition invulnerability, summon cap, HUD real/delayed values, intro/active/transition/defeat UI states, pause-safe fades, control auto-hide, eight audio buses, Master limiter, source peak headroom, semantic cue/event routing, spatial attenuation floors, original music crossfade, fixed voice count, dense-request rejection, pause/semantic duck, mix controls, rail-lance Boss stop, scattergun single Boss death, projectile/hazard/summon cleanup, arena release, settlement, and a real phase-two death reload retaining its session audio mix while restoring gameplay state.
@@ -384,5 +390,5 @@ Objective: advance through four gated sectors and eleven waves, use the traversa
 ## Highest-value next improvements
 
 1. Run timed new-player and skilled-player clears of the expanded mission on keyboard/mouse, then repeat the pressure/retry checklist and one physical-controller run. Record elapsed time, deaths, weapon choices, health/ammo at Boss entry, and any gate stall.
-2. If the 5–8/4–6 minute windows and fairness checks pass, begin formal pre-release QA. Do not add survival mode before the complete mission has this human evidence.
-3. If human mission timing and fairness pass, perform formal release QA before considering survival mode; the current evidence does not yet justify a new mode.
+2. Run a human ten-wave survival session and record clear/death time, wave reached, weapon use, supply sufficiency, and whether six simultaneous enemies remain readable.
+3. If the base survival loop passes human balance review, implement the separately scoped Roguelite three-choice upgrade phase without coupling upgrades to `WaveManager` or PVE defaults.

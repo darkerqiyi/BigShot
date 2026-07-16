@@ -169,7 +169,7 @@ Shift sprint and stamina pass completed 2026-07-15:
 - Stamina is centralized at 100 maximum, 28/s drain, 22/s recovery, 0.60-second delay, and a 20-point exhausted restart gate. Drain uses real post-collision displacement, so standing, opposing inputs, air time, pause, controlled states, and wall contact do not waste stamina.
 - Sprint cannot shoot or switch weapons. Fire, grenade charge, roll, hurt, death, focus loss, and disabled controls end it immediately; safe reload cancellation preserves current ammo. Rolls retain projectile evade and remain stamina-independent, while sprint has no invulnerability.
 - Visual-only SprintStart/Loop/Stop poses lean the body without rotating or resizing the 34x64 physics body. The weapon is stowed, footsteps accelerate, small pixel dust trails appear, and the independent world-space bar retracts from right to left before fading after full recovery.
-- Camera movement look gains a smooth, bounded 38 px sprint extension while preserving the 20,000 px level clamp. `player_sprint_stamina_test.gd`, captured sprint frames, the mixed-weapon PVE run, and the full verifier are the acceptance gates. No survival-mode runtime currently exists, so Roguelite/survival additions remain deferred.
+- Camera movement look gains a smooth, bounded 38 px sprint extension while preserving the 20,000 px level clamp. `player_sprint_stamina_test.gd`, captured sprint frames, the mixed-weapon PVE run, and the full verifier are the acceptance gates. The same player controller now also runs unchanged inside the independent survival arena.
 
 Sprint-jump momentum integration completed 2026-07-15:
 
@@ -205,9 +205,22 @@ Completed slices:
 - Horizontal acceleration, braking, reversal, keyboard/gamepad action input, collision bounds, and movement telemetry.
 - Full and cut-short jump behavior with buffer/coyote implementation, mouse/right-stick aiming, and horizontal follow camera.
 
+### Base ten-wave survival mode
+
+Status: **Pass for automated implementation and regression gates; human balance remains Partial** (2026-07-15).
+
+- The project boots to a mode selector. PVE still loads `scenes/main/main.tscn`; survival independently loads `scenes/survival/survival.tscn` and does not create the PVE mission gate, authored encounters, route hazards, or pickups.
+- `scripts/survival/wave_manager.gd` owns only wave lifecycle, capped spawning, countdowns, one-shot completion, and stop/reset behavior. `scripts/survival/survival_wave_data.gd` separately defines all ten compositions.
+- Four safe edge spawn points use a 360 px player exclusion distance, a 0.55-second warning, 0.48-second attack protection, 0.42-second spawn cadence, and a six-enemy live cap.
+- Waves 1–9 escalate through assault/gunner/shield combinations; waves 5 and 9 include an elite. Wave 10 initializes the existing three-phase Iron Tempest with survival-local bounds and summon points while preserving PVE defaults.
+- Nine 10-second intermissions clear hostile projectiles/hazards. Waves 3/6 supply limited health, ammunition, and grenades; wave 9 grants the larger pre-Boss cache.
+- Survival HUD reports wave, active/queued hostiles, countdown, kills, score, and elapsed time without replacing the existing Boss HUD. Death stops generation and clears all enemies, Boss state, projectiles, hazards, and grenades before a fresh scene reload.
+- Settlement reports score, time, kills, best combo, four-weapon kills, grenade kills, and roll projectile evades. `ConfigFile` stores only local highest score/best time; no account, cloud, leaderboard, or progression layer was added.
+- Phase-A three-wave, full ten-wave, Boss-death reset, menu isolation, real-weapon ability playthrough, and full PVE regression gates run from `./scripts/verify_prototype.sh`.
+
 Next production slice:
 
-- Complete timed new-player and skilled-player runs of the expanded mission. If first-run 5–8 minutes and skilled 4–6 minutes are confirmed without fairness or gate stalls, proceed to pre-release QA; evaluate survival mode only after that evidence.
+- Keep this base mode stable while a separately approved slice designs and validates an optional between-wave Roguelite three-choice upgrade layer. Do not fold upgrades into `WaveManager` or permanently mutate PVE player/weapon data.
 
 ### Phase 2 — Shooting, ballistics, and damage
 

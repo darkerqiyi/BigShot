@@ -12,10 +12,13 @@ signal died(boss: Node)
 const MAX_HEALTH := 1200
 const GRAVITY := 1800.0
 const MAX_FALL_SPEED := 900.0
-const ARENA_LEFT := 17855.0
-const ARENA_RIGHT := 19900.0
-
 @export var boss_name := "THE IRON TEMPEST"
+@export var arena_left := 17855.0
+@export var arena_right := 19900.0
+@export var phase_two_summon_positions := PackedVector2Array([
+	Vector2(3570.0, 552.0),
+	Vector2(4140.0, 552.0),
+])
 var target: CharacterBody2D
 var health := MAX_HEALTH
 var phase := 1
@@ -86,7 +89,7 @@ func _physics_process(delta: float) -> void:
 	if charge_remaining > 0.0:
 		_update_charge(delta)
 		move_and_slide()
-		global_position.x = clampf(global_position.x, ARENA_LEFT, ARENA_RIGHT)
+		global_position.x = clampf(global_position.x, arena_left, arena_right)
 		return
 	if recovery_remaining > 0.0:
 		recovery_remaining = maxf(recovery_remaining - delta, 0.0)
@@ -195,7 +198,7 @@ func _update_charge(delta: float) -> void:
 	if not _charge_hit and target != null and global_position.distance_to(target.global_position) < 92.0:
 		_charge_hit = true
 		target.take_damage(26 if phase < 3 else 30, Vector2(_charge_direction * 320.0, -160.0), target.global_position, {"source": &"boss", "damage_kind": &"charge"})
-	if charge_remaining <= 0.0 or global_position.x <= ARENA_LEFT + 8.0 or global_position.x >= ARENA_RIGHT - 8.0:
+	if charge_remaining <= 0.0 or global_position.x <= arena_left + 8.0 or global_position.x >= arena_right - 8.0:
 		charge_remaining = 0.0
 		_finish_attack(0.92 if phase < 3 else 0.7)
 
@@ -236,8 +239,8 @@ func _begin_phase_transition(next_phase: int) -> void:
 	warning.visible = false
 	phase_changed.emit(phase)
 	if phase == 2:
-		summon_requested.emit(Vector2(3570.0, 552.0), "assault")
-		summon_requested.emit(Vector2(4140.0, 552.0), "gunner")
+		for index in range(mini(phase_two_summon_positions.size(), 2)):
+			summon_requested.emit(phase_two_summon_positions[index], "assault" if index == 0 else "gunner")
 
 
 func _update_transition(delta: float) -> void:

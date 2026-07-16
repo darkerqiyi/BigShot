@@ -29,6 +29,7 @@ var guard_open_remaining := 0.0
 var alive := true
 var state: StringName = &"idle"
 var last_hit_feedback: StringName = &"normal"
+var last_damage_weapon_id: StringName = &"unknown"
 var attack_coordinator: Node
 
 var _flash_tween: Tween
@@ -310,6 +311,7 @@ func _fire_volley(damage: int, projectile_speed: float, offsets: Array) -> void:
 func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vector2 = Vector2.ZERO, context: Dictionary = {}) -> void:
 	if not alive:
 		return
+	last_damage_weapon_id = context.get("weapon_id", &"unknown")
 	last_hit_feedback = &"normal"
 	var applied_damage := amount
 	var was_blocked := false

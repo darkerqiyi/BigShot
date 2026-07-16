@@ -148,7 +148,7 @@ func _ready() -> void:
 	player.grenade_empty.connect(func() -> void: sfx.play_cue(&"grenade_empty"))
 	player.died.connect(_on_player_died)
 	hud.restart_requested.connect(_restart_scene)
-	hud.quit_requested.connect(func() -> void: get_tree().quit())
+	hud.quit_requested.connect(_on_quit_requested)
 	hud.audio_adjust_requested.connect(_on_audio_adjust_requested)
 	hud.audio_mute_requested.connect(_on_audio_mute_requested)
 	hud.ui_cue_requested.connect(_on_ui_cue_requested)
@@ -980,6 +980,10 @@ func _calculate_mission_rank(elapsed: float, accuracy: int, damage_events: int) 
 
 func _on_audio_mute_requested(bus_name: StringName) -> void:
 	sfx.toggle_bus_mute(bus_name)
+
+
+func _on_quit_requested() -> void:
+	get_tree().quit()
 
 
 func _on_ui_cue_requested(cue: StringName) -> void:
