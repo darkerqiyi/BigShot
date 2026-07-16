@@ -29,7 +29,7 @@ var current_wave := 0
 var total_waves := 0
 var max_active_enemies := 6
 var configured_active_limit := 6
-var intermission_duration := 10.0
+var intermission_duration := 3.5
 var initial_countdown := 2.5
 var spawn_warning_time := 0.55
 var spawn_interval := 0.42
@@ -53,6 +53,7 @@ var _wave_completion_locked := false
 var _debug_timings_enabled := false
 var _debug_resume_state := -1
 var _debug_resume_countdown := 0.0
+var _fast_start_requested := false
 
 
 func configure(waves: Array[Dictionary], active_limit: int = 6) -> void:
@@ -103,6 +104,7 @@ func reset_run() -> void:
 	_reinforcement_cooldown = 0.0
 	_spawned_this_batch = 0
 	_wave_completion_locked = false
+	_fast_start_requested = false
 	_debug_resume_state = -1
 	_debug_resume_countdown = 0.0
 
@@ -183,6 +185,26 @@ func boss_defeated() -> void:
 	_complete_current_wave()
 
 
+func request_fast_start() -> bool:
+	if state != State.REST or _fast_start_requested or countdown_remaining <= 1.0:
+		return false
+	_fast_start_requested = true
+	countdown_remaining = 1.0
+	_emit_counters()
+	return true
+
+
+func get_debug_snapshot() -> Dictionary:
+	return {
+		"wave": current_wave,
+		"wave_total_enemies": _active.size() + _pending.size() + _warnings.size() + _defeated_ids.size(),
+		"active_limit": max_active_enemies,
+		"rest_remaining": countdown_remaining if state == State.REST else 0.0,
+		"spawn_interval": spawn_interval,
+		"fast_start_requested": _fast_start_requested,
+	}
+
+
 func get_state_name() -> StringName:
 	match state:
 		State.IDLE:
@@ -243,6 +265,7 @@ func _begin_next_wave() -> void:
 		return
 	current_wave += 1
 	_wave_completion_locked = false
+	_fast_start_requested = false
 	_defeated_ids.clear()
 	var definition: Dictionary = _waves[current_wave - 1]
 	if not _debug_timings_enabled:
@@ -349,8 +372,12 @@ func _complete_current_wave() -> void:
 
 func _begin_rest() -> void:
 	_set_state(State.REST)
-	countdown_remaining = intermission_duration
-	rest_started.emit(current_wave, intermission_duration)
+	var duration := intermission_duration
+	if not _debug_timings_enabled and current_wave > 0 and current_wave <= _waves.size():
+		duration = maxf(float(_waves[current_wave - 1].get("rest_duration_after", intermission_duration)), 1.0)
+	countdown_remaining = duration
+	_fast_start_requested = false
+	rest_started.emit(current_wave, duration)
 	_emit_counters()
 
 

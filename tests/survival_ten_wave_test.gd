@@ -2,6 +2,8 @@ extends SceneTree
 
 const SurvivalScene := preload("res://scenes/survival/survival.tscn")
 const WeaponData := preload("res://scripts/weapons/weapon_catalog.gd")
+const WaveManagerScript := preload("res://scripts/survival/wave_manager.gd")
+const WaveData := preload("res://scripts/survival/survival_wave_data.gd")
 
 var failures: Array[String] = []
 var started_waves: Array[int] = []
@@ -64,7 +66,7 @@ func _run() -> void:
 	_expect(started_waves == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], "waves did not start exactly once: %s" % [started_waves])
 	_expect(completed_waves == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], "waves did not complete exactly once: %s" % [completed_waves])
 	_expect(game.wave_manager.completed_waves.size() == 10, "manager completion ledger did not contain ten waves")
-	_expect(max_active <= 6, "active enemy cap exceeded: %d" % max_active)
+	_expect(max_active <= 7, "active enemy cap exceeded: %d" % max_active)
 	_expect(bool(seen_kinds.get("5:elite", false)), "wave five did not spawn an elite")
 	_expect(bool(seen_kinds.get("9:elite", false)), "wave nine did not spawn an elite")
 	_expect(boss_requested_count == 1, "wave ten Boss was requested %d times" % boss_requested_count)
@@ -82,6 +84,17 @@ func _run() -> void:
 	_expect(saved_records.load("user://survival_records.cfg") == OK, "survival record file could not be reloaded")
 	_expect(int(saved_records.get_value("records", "highest_score", 0)) >= game.score, "saved high score is inaccurate")
 	_expect(float(saved_records.get_value("records", "best_time", 0.0)) > 0.0, "saved best time is missing")
+	var fast_manager := WaveManagerScript.new()
+	root.add_child(fast_manager)
+	fast_manager.configure(WaveData.full_waves(), 7)
+	fast_manager.state = fast_manager.State.REST
+	fast_manager.countdown_remaining = 3.5
+	_expect(fast_manager.request_fast_start() and is_equal_approx(fast_manager.countdown_remaining, 1.0), "rest fast-start did not retain the required warning second")
+	_expect(not fast_manager.request_fast_start(), "rest fast-start triggered twice")
+	fast_manager.state = fast_manager.State.UPGRADE_SELECTION
+	fast_manager.countdown_remaining = 0.0
+	_expect(not fast_manager.request_fast_start(), "upgrade selection was incorrectly skippable")
+	fast_manager.queue_free()
 
 	var completed_kills: int = game._run_kills
 	var completed_seconds: float = game._run_elapsed
@@ -125,8 +138,10 @@ func _run() -> void:
 		_expect(current_scene.player.grenade_count == 3 and not current_scene.player.is_rolling and not current_scene.player.is_sprinting, "PVE ability state leaked from survival")
 		_expect(current_scene.player.runtime_max_health == current_scene.player.MAX_HEALTH and is_equal_approx(current_scene.player.runtime_max_stamina, 100.0), "PVE inherited survival health or stamina upgrades")
 		_expect(is_equal_approx(float(current_scene.player.weapon_inventory.get_runtime_modifiers()["reload_time_multiplier"]), 1.0), "PVE inherited survival weapon upgrades")
+		var pve_enemy: Node = current_scene._spawn_enemy("assault", Vector2(600, 552), 0.0, false, false)
+		_expect(pve_enemy.max_health == 44, "PVE inherited survival enemy health")
 
-	print("SURVIVAL_TEN_WAVE_METRICS waves=10 ordinary_kills=77 total_kills=%d max_active=%d simulated_seconds=%.2f upgrades=%s boss_death_reset=true pve_isolated=true" % [completed_kills, max_active, completed_seconds, applied_upgrades])
+	print("SURVIVAL_TEN_WAVE_METRICS waves=10 ordinary_kills=104 total_kills=%d max_active=%d simulated_seconds=%.2f upgrades=%s fast_start=true boss_death_reset=true pve_isolated=true" % [completed_kills, max_active, completed_seconds, applied_upgrades])
 	_finish()
 
 

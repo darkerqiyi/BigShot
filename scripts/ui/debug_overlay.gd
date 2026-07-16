@@ -177,3 +177,48 @@ func _update_readout() -> void:
 			", ".join(upgrade_snapshot.get("candidate_ids", []) as Array),
 			JSON.stringify(upgrade_snapshot.get("stacks", {})),
 		]
+	var nearest_enemy: Node2D = null
+	var nearest_distance := INF
+	if player is Node2D:
+		for candidate in get_tree().get_nodes_in_group("enemies"):
+			if not candidate is Node2D or not is_instance_valid(candidate):
+				continue
+			var distance := (candidate as Node2D).global_position.distance_squared_to((player as Node2D).global_position)
+			if distance < nearest_distance:
+				nearest_distance = distance
+				nearest_enemy = candidate as Node2D
+	if nearest_enemy != null and nearest_enemy.has_method("get_debug_combat_snapshot"):
+		var enemy_snapshot: Dictionary = nearest_enemy.get_debug_combat_snapshot()
+		var last_hit: Dictionary = enemy_snapshot.get("last_damage", {})
+		readout.text += "\n\nTARGET: %s  HP %d/%d\nHead pos/size: %s / %s\nLast: %s  base %d  x%.1f  mitigation %.2f  final %d" % [
+			str(enemy_snapshot.get("kind", &"enemy")),
+			int(enemy_snapshot.get("health", 0)),
+			int(enemy_snapshot.get("max_health", 0)),
+			str(enemy_snapshot.get("head_position", Vector2.ZERO)),
+			str(enemy_snapshot.get("head_size", Vector2.ZERO)),
+			str(last_hit.get("hit_zone", &"none")),
+			int(last_hit.get("base_damage", 0)),
+			float(last_hit.get("headshot_multiplier", 1.0)),
+			float(last_hit.get("mitigation", 0.0)),
+			int(last_hit.get("final_damage", 0)),
+		]
+	var damage_number_manager := get_node_or_null("../World/Effects/DamageNumbers")
+	if damage_number_manager != null and damage_number_manager.has_method("get_debug_snapshot"):
+		var number_snapshot: Dictionary = damage_number_manager.get_debug_snapshot()
+		readout.text += "\nDamage numbers: %d/%d  free %d  dropped %d" % [
+			int(number_snapshot.get("visible", 0)),
+			int(number_snapshot.get("pool_total", 0)),
+			int(number_snapshot.get("pool_free", 0)),
+			int(number_snapshot.get("dropped_visuals", 0)),
+		]
+	var wave_manager := get_node_or_null("../WaveManager")
+	if wave_manager != null and wave_manager.has_method("get_debug_snapshot"):
+		var wave_snapshot: Dictionary = wave_manager.get_debug_snapshot()
+		readout.text += "\nWAVE %d: total %d  cap %d\nRest %.1fs  spawn %.2fs  quick %s" % [
+			int(wave_snapshot.get("wave", 0)),
+			int(wave_snapshot.get("wave_total_enemies", 0)),
+			int(wave_snapshot.get("active_limit", 0)),
+			float(wave_snapshot.get("rest_remaining", 0.0)),
+			float(wave_snapshot.get("spawn_interval", 0.0)),
+			"yes" if bool(wave_snapshot.get("fast_start_requested", false)) else "no",
+		]

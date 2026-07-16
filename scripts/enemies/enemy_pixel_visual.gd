@@ -146,6 +146,18 @@ func get_muzzle_global_position() -> Vector2:
 	return muzzle_point.global_position
 
 
+func get_head_local_position() -> Vector2:
+	var bob := _move_bob()
+	match enemy_kind:
+		"assault":
+			var lean := 3 if base_animation_state == &"run" else (-4 if base_animation_state == &"attack_telegraph" else (6 if animation_state == &"attack" else 0))
+			return Vector2(lean, -20 + bob)
+		"elite":
+			return Vector2(0, -24 + bob)
+		_:
+			return Vector2(0, -21 + bob)
+
+
 func _map_logic_state(logic_state: StringName, current_velocity: Vector2, is_active: bool) -> StringName:
 	if not is_active or logic_state == &"inactive":
 		return &"inactive"

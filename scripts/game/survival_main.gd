@@ -49,6 +49,7 @@ func _setup_mission() -> void:
 
 
 func _ready() -> void:
+	enemy_balance_mode = &"survival"
 	super._ready()
 	run_state = "survival_countdown"
 	player.global_position = PLAYER_START
@@ -135,6 +136,16 @@ func _process(delta: float) -> void:
 				projectiles.get_child_count(),
 				effects.get_child_count(),
 			)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if get_tree().paused or wave_manager == null:
+		return
+	if event.is_action_pressed("ui_accept") or event.is_action_pressed("jump"):
+		if wave_manager.request_fast_start():
+			hud.show_banner("NEXT WAVE // FAST START", Color("62d8ff"), false, 0.7)
+			sfx.play_cue(&"ui_confirm")
+			get_viewport().set_input_as_handled()
 
 
 func _create_arena_boundaries() -> void:
@@ -468,6 +479,8 @@ func _on_survival_run_completed() -> void:
 
 
 func _clear_survival_runtime(include_boss: bool = true) -> void:
+	if damage_numbers != null:
+		damage_numbers.clear_all()
 	for container in [enemies, projectiles, hazards, grenades]:
 		for child in container.get_children():
 			child.queue_free()

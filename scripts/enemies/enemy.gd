@@ -8,12 +8,15 @@ signal hurt_feedback(enemy: Node, feedback: StringName)
 signal movement_step(enemy: Node, intensity: float)
 signal blocked(position: Vector2, strength: float)
 signal died(enemy: Node, points: int)
+signal damage_resolved(enemy: Node, result: Dictionary)
 
 const GRAVITY := 1800.0
 const MAX_FALL_SPEED := 900.0
 const Tuning := preload("res://scripts/config/game_tuning.gd")
+const EnemyBalanceData := preload("res://scripts/config/enemy_balance.gd")
 
 @export_enum("assault", "gunner", "shield", "elite", "rifle", "runner", "heavy") var kind := "gunner"
+var balance_mode: StringName = &"pve"
 var target: CharacterBody2D
 var active := true
 var activation_x := 0.0
@@ -30,6 +33,7 @@ var alive := true
 var state: StringName = &"idle"
 var last_hit_feedback: StringName = &"normal"
 var last_damage_weapon_id: StringName = &"unknown"
+var last_damage_result: Dictionary = {}
 var attack_coordinator: Node
 
 var _flash_tween: Tween
@@ -47,6 +51,8 @@ var _attack_slot_held := false
 @onready var visual = $EnemyVisual
 @onready var health_fill: Polygon2D = $HealthBar/Fill
 @onready var warning: Node2D = $Warning
+@onready var head_hurtbox: Area2D = $HeadHurtbox
+@onready var head_shape: CollisionShape2D = $HeadHurtbox/CollisionShape2D
 
 
 func _ready() -> void:
@@ -68,18 +74,21 @@ func _apply_kind() -> void:
 	scale = Vector2.ONE
 	match kind:
 		"assault", "runner":
-			max_health = 44
 			move_speed = 175.0
 		"shield":
-			max_health = 92
 			move_speed = 68.0
 		"elite", "heavy":
-			max_health = 230
 			move_speed = 52.0
 			scale = Vector2(1.28, 1.28)
 		_:
-			max_health = 58
 			move_speed = 82.0
+	max_health = EnemyBalanceData.health_for(kind, balance_mode)
+	var head_rectangle := head_shape.shape.duplicate() as RectangleShape2D
+	if head_rectangle != null:
+		head_rectangle.size = EnemyBalanceData.head_size_for(kind)
+		head_shape.shape = head_rectangle
+	head_hurtbox.set_meta("hit_zone", &"head")
+	head_hurtbox.set_meta("damage_target", self)
 	visual.configure(kind)
 	health = max_health
 	_update_health_bar()
@@ -151,6 +160,8 @@ func _sync_visual(delta: float) -> void:
 		active,
 		alive,
 	)
+	if alive:
+		head_hurtbox.position = visual.get_head_local_position()
 
 
 func _update_audio_steps() -> void:
@@ -308,11 +319,25 @@ func _fire_volley(damage: int, projectile_speed: float, offsets: Array) -> void:
 		shot_requested.emit(origin, base_direction.rotated(float(offset)), &"enemy", damage, projectile_speed)
 
 
-func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vector2 = Vector2.ZERO, context: Dictionary = {}) -> void:
+func resolve_hit_zone(requested_zone: StringName, context: Dictionary = {}) -> StringName:
+	if requested_zone != &"head":
+		return &"body"
+	# A closed shield visually covers the frontal head line. Breaking or moving
+	# around the guard exposes the ordinary head multiplier again.
+	if kind == "shield" and guard_open_remaining <= 0.0 and _is_front_hit(context):
+		return &"body"
+	return &"head"
+
+
+func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vector2 = Vector2.ZERO, context: Dictionary = {}) -> Dictionary:
 	if not alive:
-		return
+		return {}
 	last_damage_weapon_id = context.get("weapon_id", &"unknown")
 	last_hit_feedback = &"normal"
+	var requested_zone: StringName = context.get("hit_zone", &"body")
+	var hit_zone := resolve_hit_zone(requested_zone, context)
+	var headshot := bool(context.get("critical", false)) and hit_zone == &"head"
+	var health_before := health
 	var applied_damage := amount
 	var was_blocked := false
 	if kind == "shield" and guard_open_remaining <= 0.0 and _is_front_hit(context):
@@ -347,16 +372,50 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vec
 		last_hit_feedback = &"heavy"
 	elif not was_blocked and context.get("weapon_id", &"") == &"sniper":
 		last_hit_feedback = &"heavy"
+	elif headshot:
+		last_hit_feedback = &"headshot"
 	health = maxi(health - applied_damage, 0)
+	var final_damage := health_before - health
 	velocity += impulse
 	_update_health_bar()
 	if not was_blocked:
 		_flash_white()
 		hurt_feedback.emit(self, last_hit_feedback)
 	_sync_visual(0.0)
+	last_damage_result = {
+		"attacker": context.get("attacker"),
+		"target": self,
+		"base_damage": int(context.get("base_damage", amount)),
+		"requested_damage": amount,
+		"final_damage": final_damage,
+		"hit_position": hit_position,
+		"hit_zone": hit_zone,
+		"damage_type": context.get("damage_kind", &"unknown"),
+		"weapon_id": last_damage_weapon_id,
+		"blocked": was_blocked,
+		"critical": headshot,
+		"headshot": headshot,
+		"source_direction": context.get("direction", Vector2.ZERO),
+		"mitigation": maxi(amount - applied_damage, 0),
+		"health_before": health_before,
+		"health_after": health,
+	}
+	damage_resolved.emit(self, last_damage_result.duplicate(true))
 	if health <= 0:
 		last_hit_feedback = &"kill"
 		_die()
+	return last_damage_result.duplicate(true)
+
+
+func get_debug_combat_snapshot() -> Dictionary:
+	return {
+		"kind": kind,
+		"health": health,
+		"max_health": max_health,
+		"head_position": head_hurtbox.global_position,
+		"head_size": (head_shape.shape as RectangleShape2D).size,
+		"last_damage": last_damage_result.duplicate(true),
+	}
 
 
 func _is_front_hit(context: Dictionary) -> bool:
@@ -389,6 +448,7 @@ func _die() -> void:
 	set_physics_process(false)
 	collision_layer = 0
 	collision_mask = 0
+	head_hurtbox.collision_layer = 0
 	$HealthBar.visible = false
 	visual.set_facing(int(signf(velocity.x)) if not is_zero_approx(velocity.x) else int(_facing))
 	visual.play_death()

@@ -58,6 +58,7 @@ const CUE_PROFILES := {
 	&"empty_click": {"bus": &"Weapons", "volume": -9.5, "cooldown": 0.160, "max": 1, "priority": 2, "pitch": 0.015, "synth": [1080.0, 0.045, 0.10, -0.18, 1.24]},
 	&"impact_normal": {"bus": &"SFX", "volume": -10.0, "cooldown": 0.026, "max": 3, "priority": 1, "pitch": 0.045, "synth": [610.0, 0.045, 0.44, 0.20, 1.83]},
 	&"impact_heavy": {"bus": &"SFX", "volume": -6.2, "cooldown": 0.060, "max": 2, "priority": 3, "pitch": 0.018, "synth": [226.0, 0.118, 0.62, -0.42, 1.47]},
+	&"headshot": {"bus": &"SFX", "volume": -7.2, "cooldown": 0.055, "max": 2, "priority": 3, "pitch": 0.012, "synth": [920.0, 0.085, 0.08, 0.62, 1.76]},
 	&"impact_wall": {"bus": &"SFX", "volume": -14.0, "cooldown": 0.035, "max": 2, "priority": 0, "pitch": 0.05, "synth": [980.0, 0.030, 0.20, 0.08, 1.33]},
 	&"shield_block": {"bus": &"Enemies", "volume": -7.4, "cooldown": 0.060, "max": 2, "priority": 2, "pitch": 0.018, "synth": [1180.0, 0.070, 0.12, -0.34, 1.27]},
 	&"guard_break": {"bus": &"Enemies", "volume": -5.4, "cooldown": 0.100, "max": 2, "priority": 3, "pitch": 0.01, "synth": [180.0, 0.160, 0.56, -0.60, 1.52]},

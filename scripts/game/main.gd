@@ -14,6 +14,7 @@ const MissionSpikesScript := preload("res://scripts/world/mission_spikes.gd")
 const MissionMovingPlatformScript := preload("res://scripts/world/moving_platform.gd")
 const PlayerGrenadeScript := preload("res://scripts/combat/player_grenade.gd")
 const GrenadeExplosionScript := preload("res://scripts/effects/grenade_explosion.gd")
+const DamageNumberManagerScript := preload("res://scripts/effects/damage_number_manager.gd")
 const Tuning := preload("res://scripts/config/game_tuning.gd")
 
 const MISSION_ENCOUNTERS := [
@@ -97,6 +98,8 @@ var _run_damage_events := 0
 var _roll_tutorial_shown := false
 var _grenade_tutorial_shown := false
 var _active_ability_tutorial: StringName = &""
+var enemy_balance_mode: StringName = &"pve"
+var damage_numbers: DamageNumberManager
 static var _resume_boss_checkpoint_next := false
 static var _resume_run_stats_next: Dictionary = {}
 
@@ -124,6 +127,9 @@ func _ready() -> void:
 	add_child(combat_feedback)
 	combat_feedback.configure(camera)
 	combat_feedback.shake_scale_changed.connect(_on_shake_scale_changed)
+	damage_numbers = DamageNumberManagerScript.new()
+	damage_numbers.name = "DamageNumbers"
+	effects.add_child(damage_numbers)
 	player.add_to_group("player")
 	player.volley_requested.connect(_spawn_player_volley)
 	player.health_changed.connect(hud.set_health)
@@ -362,6 +368,7 @@ func _on_player_roll_started(_position: Vector2, _direction: int) -> void:
 func _spawn_enemy(kind: String, spawn_position: Vector2, activation: float, counts_for_progress: bool, boss_summon: bool, encounter_id: int = 0) -> Node:
 	var enemy := EnemyScene.instantiate()
 	enemy.kind = kind
+	enemy.balance_mode = enemy_balance_mode
 	enemy.target = player
 	enemy.position = spawn_position
 	enemy.activation_x = activation
@@ -460,14 +467,30 @@ func _on_player_grenade_exploded(center: Vector2, radius: float, damage: int, kn
 		var direction: Vector2 = (target.global_position - center).normalized()
 		if direction.length_squared() < 0.01:
 			direction = Vector2.UP
-		target.take_damage(applied_request, direction * knockback, center, {
+		var returned_result = target.take_damage(applied_request, direction * knockback, center, {
+			"attacker": player,
+			"base_damage": applied_request,
 			"weapon_id": &"grenade",
 			"team": &"player",
 			"direction": direction,
 			"impact_strength": 1.0,
 			"source": &"grenade",
 			"damage_kind": &"explosion",
+			"hit_zone": &"body",
+			"critical": false,
 		})
+		var damage_result: Dictionary = returned_result if returned_result is Dictionary else {
+			"target": target,
+			"base_damage": applied_request,
+			"final_damage": maxi(health_before - int(target.get("health")), 0),
+			"hit_position": center,
+			"hit_zone": &"body",
+			"weapon_id": &"grenade",
+			"blocked": false,
+			"critical": false,
+		}
+		if damage_numbers != null:
+			damage_numbers.show_result(target, target.global_position + Vector2(0, -22), damage_result)
 		if telemetry != null:
 			var health_after := int(target.get("health"))
 			var alive_after := bool(target.get("alive")) if target.get("alive") != null else health_after > 0
@@ -550,6 +573,10 @@ func _on_projectile_impact_detailed(hit_position: Vector2, color: Color, strengt
 	var weapon_id: StringName = details.get("weapon_id", &"")
 	var feedback: StringName = details.get("feedback", &"normal")
 	var can_damage := bool(details.get("can_damage", false))
+	var critical := bool(details.get("critical", false))
+	var target := details.get("target") as Node
+	if team == &"player" and can_damage and target != null and damage_numbers != null:
+		damage_numbers.show_result(target, hit_position + Vector2(0, -10), details)
 	if telemetry != null and team == &"player" and can_damage:
 		telemetry.record_hit(weapon_id, int(details.get("applied_damage", 0)), feedback)
 	if team == &"player" and can_damage:
@@ -564,6 +591,10 @@ func _on_projectile_impact_detailed(hit_position: Vector2, color: Color, strengt
 		if bool(details.get("is_boss", false)):
 			profile = &"boss_heavy" if feedback == &"boss_heavy" else &"boss_normal"
 			effect_kind = profile
+		elif critical:
+			profile = &"headshot"
+			effect_kind = &"sniper"
+			effect_strength = maxf(effect_strength, 0.92)
 		elif feedback == &"heavy" or weapon_id == &"sniper":
 			profile = &"sniper_hit" if weapon_id == &"sniper" else &"heavy_hit"
 			effect_kind = &"sniper" if weapon_id == &"sniper" else &"heavy"
@@ -580,10 +611,14 @@ func _on_projectile_impact_detailed(hit_position: Vector2, color: Color, strengt
 		merge_group = &"shotgun_impact_volley"
 	elif weapon_id == &"sniper":
 		merge_group = &"sniper_penetration_trace"
+	elif critical:
+		merge_group = StringName("headshot_%d" % int(details.get("target_id", 0)))
 	var hold: float = float(combat_feedback.request_visual_hold(profile, merge_group))
 	_spawn_impact(hit_position, color, effect_strength, false, effect_kind, direction, hold)
 	if team != &"player":
 		return
+	if critical:
+		sfx.play_world_cue(&"headshot", hit_position, player.global_position, true)
 	if not combat_feedback.request_shake(profile, merge_group):
 		return
 	if profile == &"boss_heavy":
@@ -651,9 +686,10 @@ func _on_enemy_died(enemy: Node, points: int) -> void:
 	_run_kills += 1
 	score += points
 	hud.set_score(score)
-	var heavy_death := str(enemy.get("kind")) in ["elite", "heavy", "shield"]
+	var killed_by_headshot := bool((enemy.get("last_damage_result") as Dictionary).get("headshot", false))
+	var heavy_death := str(enemy.get("kind")) in ["elite", "heavy", "shield"] or killed_by_headshot
 	var death_profile: StringName = &"kill_heavy" if heavy_death else &"kill_light"
-	_spawn_impact(enemy.global_position, Color(1.0, 0.32, 0.16, 1), 0.8 if heavy_death else 0.62, true, death_profile)
+	_spawn_impact(enemy.global_position, Color("ffd35a") if killed_by_headshot else Color(1.0, 0.32, 0.16, 1), 0.8 if heavy_death else 0.62, true, death_profile)
 	sfx.play_world_cue(&"enemy_kill_heavy" if heavy_death else &"enemy_kill_light", enemy.global_position, player.global_position, heavy_death)
 	combat_feedback.request_shake(death_profile, StringName("death_%s" % enemy.get_instance_id()))
 	if run_state in ["combat", "boss_ready"]:
@@ -743,6 +779,8 @@ func _spawn_hazard(hazard_position: Vector2, radius: float, damage: int, windup:
 func _on_player_died() -> void:
 	if _restart_pending:
 		return
+	if damage_numbers != null:
+		damage_numbers.clear_all()
 	var boss_checkpoint := run_state == "boss"
 	_resume_boss_checkpoint_next = boss_checkpoint
 	_resume_run_stats_next = {
