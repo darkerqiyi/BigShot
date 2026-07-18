@@ -31,7 +31,8 @@ func _run() -> void:
 func _test_balance_contract() -> void:
 	_expect([WeaponData.get_weapon(&"rifle").damage, WeaponData.get_weapon(&"shotgun").damage, WeaponData.get_weapon(&"sniper").damage, WeaponData.get_weapon(&"pistol").damage] == [24, 17, 92, 32], "hit feedback changed weapon damage")
 	_expect([WeaponData.get_weapon(&"rifle").fire_rate, WeaponData.get_weapon(&"shotgun").fire_rate, WeaponData.get_weapon(&"sniper").fire_rate, WeaponData.get_weapon(&"pistol").fire_rate] == [0.085, 0.62, 1.0, 0.23], "hit feedback changed weapon fire rates")
-	_expect(EnemyBalance.SURVIVAL_HEALTH == {"assault": 192, "gunner": 216, "shield": 288, "elite": 1200}, "hit feedback changed survival health")
+	_expect(EnemyBalance.SURVIVAL_HEALTH == {"assault": 132, "gunner": 120, "shield": 216, "elite": 900}, "hit feedback changed survival base health")
+	_expect(EnemyBalance.health_for("assault", &"survival", 9) == 196 and EnemyBalance.health_for("elite", &"survival", 9) == 1124, "linear survival health growth changed")
 
 
 func _test_weapon_visual_reactions(game: Node) -> void:

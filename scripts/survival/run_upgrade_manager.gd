@@ -7,6 +7,8 @@ signal run_reset
 
 const UpgradeData := preload("res://scripts/survival/upgrade_definition.gd")
 const Tuning := preload("res://scripts/config/game_tuning.gd")
+const WeaponData := preload("res://scripts/weapons/weapon_catalog.gd")
+const CANDIDATE_FAMILIES: Array[StringName] = [&"output", &"survival", &"mobility"]
 
 var random_seed := 0
 var stacks: Dictionary = {}
@@ -54,19 +56,28 @@ func generate_candidates(count: int = 3) -> Array[Dictionary]:
 		if (_debug_allowed_ids.is_empty() or _debug_allowed_ids.has(definition.id)) and get_stack_count(definition.id) < definition.max_stacks:
 			available.append(definition)
 	var selected: Array[UpgradeDefinition] = []
-	if not available.is_empty():
-		selected.append(_weighted_take(available))
-	if selected.size() < count and not available.is_empty():
-		var other_categories: Array[UpgradeDefinition] = []
+	var family_order := CANDIDATE_FAMILIES.duplicate()
+	for index in range(family_order.size() - 1, 0, -1):
+		var swap_index := _rng.randi_range(0, index)
+		var held: StringName = family_order[index]
+		family_order[index] = family_order[swap_index]
+		family_order[swap_index] = held
+	for family in family_order:
+		if selected.size() >= count:
+			break
+		var family_pool: Array[UpgradeDefinition] = []
 		for definition in available:
-			if definition.category != selected[0].category:
-				other_categories.append(definition)
-		selected.append(_weighted_take(other_categories if not other_categories.is_empty() else available))
+			if _candidate_family(definition) == family:
+				family_pool.append(definition)
+		if not family_pool.is_empty():
+			var chosen := _weighted_take(family_pool)
+			selected.append(chosen)
+			_remove_available(available, chosen.id)
 	while selected.size() < count and not available.is_empty():
 		selected.append(_weighted_take(available))
 	current_candidates.clear()
 	for definition in selected:
-		current_candidates.append(definition.to_card(get_stack_count(definition.id)))
+		current_candidates.append(_card_for(definition))
 	selection_open = not current_candidates.is_empty()
 	candidates_generated.emit(current_candidates.duplicate(true))
 	return current_candidates.duplicate(true)
@@ -99,7 +110,7 @@ func apply_debug_upgrade(upgrade_id: StringName) -> bool:
 	var definition := _definitions[upgrade_id] as UpgradeDefinition
 	if get_stack_count(upgrade_id) >= definition.max_stacks:
 		return false
-	current_candidates = [definition.to_card(get_stack_count(upgrade_id))]
+	current_candidates = [_card_for(definition)]
 	selection_open = true
 	return apply_candidate(upgrade_id)
 
@@ -132,18 +143,22 @@ func get_remaining_pool_size() -> int:
 
 
 func calculate_final_modifiers() -> Dictionary:
-	var endurance := get_stack_count(&"endurance_core")
-	var efficient := get_stack_count(&"efficient_drive")
-	var momentum := get_stack_count(&"momentum_module")
-	var evasive := get_stack_count(&"evasive_circuit")
-	var ordnance := get_stack_count(&"extra_ordnance")
-	var radius := get_stack_count(&"blast_radius")
-	var explosive := get_stack_count(&"high_explosive")
-	var reload := get_stack_count(&"quick_reload")
-	var overclock := get_stack_count(&"auto_overclock")
-	var scatter := get_stack_count(&"scatter_load")
-	var lance := get_stack_count(&"lance_penetration")
-	var vitals := get_stack_count(&"reinforced_vitals")
+	return _calculate_modifiers(stacks)
+
+
+func _calculate_modifiers(stack_source: Dictionary) -> Dictionary:
+	var endurance := int(stack_source.get(&"endurance_core", 0))
+	var efficient := int(stack_source.get(&"efficient_drive", 0))
+	var momentum := int(stack_source.get(&"momentum_module", 0))
+	var evasive := int(stack_source.get(&"evasive_circuit", 0))
+	var ordnance := int(stack_source.get(&"extra_ordnance", 0))
+	var radius := int(stack_source.get(&"blast_radius", 0))
+	var explosive := int(stack_source.get(&"high_explosive", 0))
+	var reload := int(stack_source.get(&"quick_reload", 0))
+	var overclock := int(stack_source.get(&"auto_overclock", 0))
+	var scatter := int(stack_source.get(&"scatter_load", 0))
+	var lance := int(stack_source.get(&"lance_penetration", 0))
+	var vitals := int(stack_source.get(&"reinforced_vitals", 0))
 	return {
 		"max_stamina": Tuning.PLAYER_MAX_STAMINA + 20.0 * endurance,
 		"stamina_drain": Tuning.PLAYER_STAMINA_DRAIN_PER_SECOND * maxf(0.60, 1.0 - 0.12 * efficient),
@@ -204,6 +219,65 @@ func _weighted_take(pool: Array[UpgradeDefinition]) -> UpgradeDefinition:
 			pool.remove_at(index)
 			return definition
 	return pool.pop_back()
+
+
+func _remove_available(pool: Array[UpgradeDefinition], upgrade_id: StringName) -> void:
+	for index in range(pool.size() - 1, -1, -1):
+		if pool[index].id == upgrade_id:
+			pool.remove_at(index)
+
+
+func _candidate_family(definition: UpgradeDefinition) -> StringName:
+	if definition.category == &"survival" or definition.id in [&"endurance_core", &"extra_ordnance"]:
+		return &"survival"
+	if definition.category in [&"movement", &"roll"]:
+		return &"mobility"
+	return &"output"
+
+
+func _card_for(definition: UpgradeDefinition) -> Dictionary:
+	var card := definition.to_card(get_stack_count(definition.id))
+	var before := calculate_final_modifiers()
+	var projected_stacks := stacks.duplicate(true)
+	projected_stacks[definition.id] = get_stack_count(definition.id) + 1
+	var after := _calculate_modifiers(projected_stacks)
+	card["value_preview"] = _value_preview(definition.id, before, after)
+	card["family"] = _candidate_family(definition)
+	return card
+
+
+func _value_preview(upgrade_id: StringName, before: Dictionary, after: Dictionary) -> String:
+	var before_weapons: Dictionary = before["weapon_modifiers"]
+	var after_weapons: Dictionary = after["weapon_modifiers"]
+	match upgrade_id:
+		&"endurance_core":
+			return "STAMINA %.0f -> %.0f" % [before["max_stamina"], after["max_stamina"]]
+		&"efficient_drive":
+			return "SPRINT DRAIN %.1f/s -> %.1f/s" % [before["stamina_drain"], after["stamina_drain"]]
+		&"momentum_module":
+			return "SPRINT %.0f -> %.0f" % [before["sprint_speed"], after["sprint_speed"]]
+		&"evasive_circuit":
+			return "ROLL %.2fs -> %.2fs" % [before["roll_cooldown"], after["roll_cooldown"]]
+		&"extra_ordnance":
+			return "GRENADES %d -> %d" % [before["grenade_capacity"], after["grenade_capacity"]]
+		&"blast_radius":
+			return "RADIUS %.0fpx -> %.0fpx" % [before["grenade_radius"], after["grenade_radius"]]
+		&"high_explosive":
+			return "GRENADE DAMAGE %d -> %d" % [before["grenade_damage"], after["grenade_damage"]]
+		&"quick_reload":
+			return "RELOAD %.0f%% -> %.0f%%" % [float(before_weapons["reload_time_multiplier"]) * 100.0, float(after_weapons["reload_time_multiplier"]) * 100.0]
+		&"auto_overclock":
+			var base_interval := float(WeaponData.get_weapon(&"rifle")["fire_rate"])
+			return "AUTO INTERVAL %.3fs -> %.3fs" % [base_interval * float(before_weapons["rifle_fire_rate_multiplier"]), base_interval * float(after_weapons["rifle_fire_rate_multiplier"])]
+		&"scatter_load":
+			var pellets := int(WeaponData.get_weapon(&"shotgun")["projectile_count"])
+			return "PELLETS %d -> %d" % [pellets + int(before_weapons["shotgun_projectile_bonus"]), pellets + int(after_weapons["shotgun_projectile_bonus"])]
+		&"lance_penetration":
+			var penetration := int(WeaponData.get_weapon(&"sniper")["penetration_count"])
+			return "PENETRATION %d -> %d" % [penetration + int(before_weapons["sniper_penetration_bonus"]), penetration + int(after_weapons["sniper_penetration_bonus"])]
+		&"reinforced_vitals":
+			return "HEALTH %d -> %d" % [before["max_health"], after["max_health"]]
+	return ""
 
 
 func _candidate_contains(upgrade_id: StringName) -> bool:

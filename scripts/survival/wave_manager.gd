@@ -30,6 +30,7 @@ var total_waves := 0
 var max_active_enemies := 6
 var configured_active_limit := 6
 var intermission_duration := 3.5
+var post_upgrade_intermission_duration := 2.0
 var initial_countdown := 2.5
 var spawn_warning_time := 0.55
 var spawn_interval := 0.42
@@ -129,7 +130,7 @@ func resume_after_upgrade() -> bool:
 		_debug_resume_countdown = 0.0
 		_emit_counters()
 		return true
-	_begin_rest()
+	_begin_rest(post_upgrade_intermission_duration)
 	return true
 
 
@@ -370,11 +371,13 @@ func _complete_current_wave() -> void:
 	_begin_rest()
 
 
-func _begin_rest() -> void:
+func _begin_rest(duration_override: float = -1.0) -> void:
 	_set_state(State.REST)
 	var duration := intermission_duration
 	if not _debug_timings_enabled and current_wave > 0 and current_wave <= _waves.size():
 		duration = maxf(float(_waves[current_wave - 1].get("rest_duration_after", intermission_duration)), 1.0)
+	if duration_override >= 0.0:
+		duration = maxf(duration_override, 1.0)
 	countdown_remaining = duration
 	_fast_start_requested = false
 	rest_started.emit(current_wave, duration)

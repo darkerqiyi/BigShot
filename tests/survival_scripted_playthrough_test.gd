@@ -134,11 +134,11 @@ func _run() -> void:
 			used_weapon_count += 1
 	_expect(game.run_state == "complete", "scripted survival playthrough did not clear ten waves")
 	# Mixed automation has near-perfect aim and heals between frames, so its
-	# 7-15 minute regression band sits below the 8-15 minute human target. The
+	# 6-15 minute regression band sits below the 8-12 minute human target. The
 	# rifle-only probe also holds fire and rolls almost continuously; its lower
 	# 4-10 minute band detects stalls without pretending it is a new-player run;
 	# shield positioning intentionally produces wider timing variance here.
-	var minimum_duration := 240.0 if strategy == "rifle_only" else 420.0
+	var minimum_duration := 240.0 if strategy == "rifle_only" else 360.0
 	var maximum_duration := 600.0 if strategy == "rifle_only" else 900.0
 	var duration_in_band: bool = game._run_elapsed >= minimum_duration and game._run_elapsed <= maximum_duration
 	_expect(duration_in_band, "simulated survival duration %.1fs was outside the strategy band for %s" % [game._run_elapsed, strategy])
@@ -149,6 +149,14 @@ func _run() -> void:
 	_expect(game.upgrade_manager.selection_history.size() == 4, "scripted survival did not select four run upgrades")
 	if strategy == "mixed":
 		_expect(int(snapshot["grenades"]["damage"]) > 0, "mixed survival route did not produce real grenade damage")
+	var total_hits := 0
+	var total_headshots := 0
+	var total_damage := int(snapshot["grenades"]["damage"])
+	for weapon_id in snapshot["weapons"]:
+		var stats: Dictionary = snapshot["weapons"][weapon_id]
+		total_hits += int(stats.get("hits", 0))
+		total_headshots += int(stats.get("headshots", 0))
+		total_damage += int(stats.get("damage", 0))
 	print("SURVIVAL_SCRIPTED_METRICS %s" % JSON.stringify({
 		"strategy": strategy,
 		"elapsed": game._run_elapsed,
@@ -162,6 +170,10 @@ func _run() -> void:
 		"grenades": snapshot["grenades"]["throws"],
 		"damage_events": snapshot["damage_events"],
 		"damage_sources": snapshot["damage_sources"],
+		"total_damage": total_damage,
+		"headshots": total_headshots,
+		"headshot_rate": snappedf(float(total_headshots) / float(maxi(total_hits, 1)), 0.001),
+		"boss_duration": snappedf(float(snapshot["elapsed"]) - float(snapshot["boss_started_at"]), 0.01),
 		"build": game.upgrade_manager.selection_history,
 	}))
 	_finish()

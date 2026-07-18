@@ -11,10 +11,18 @@ const PVE_HEALTH := {
 }
 
 const SURVIVAL_HEALTH := {
-	&"assault": 192,
-	&"gunner": 216,
-	&"shield": 288,
-	&"elite": 1200,
+	&"assault": 132,
+	&"gunner": 120,
+	&"shield": 216,
+	&"elite": 900,
+}
+
+# Linear growth keeps later waves relevant without exponential health inflation.
+const SURVIVAL_HEALTH_PER_WAVE := {
+	&"assault": 8,
+	&"gunner": 6,
+	&"shield": 9,
+	&"elite": 28,
 }
 
 const HEAD_SIZES := {
@@ -37,10 +45,13 @@ static func normalized_kind(kind: String) -> StringName:
 			return StringName(kind)
 
 
-static func health_for(kind: String, mode: StringName) -> int:
+static func health_for(kind: String, mode: StringName, wave_number: int = 0) -> int:
 	var role := normalized_kind(kind)
-	var table: Dictionary = SURVIVAL_HEALTH if mode == &"survival" else PVE_HEALTH
-	return int(table.get(role, PVE_HEALTH[&"gunner"]))
+	if mode != &"survival":
+		return int(PVE_HEALTH.get(role, PVE_HEALTH[&"gunner"]))
+	var base_health := int(SURVIVAL_HEALTH.get(role, SURVIVAL_HEALTH[&"gunner"]))
+	var growth := int(SURVIVAL_HEALTH_PER_WAVE.get(role, 0))
+	return base_health + growth * maxi(wave_number - 1, 0)
 
 
 static func head_size_for(kind: String) -> Vector2:

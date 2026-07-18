@@ -285,6 +285,8 @@ func _on_survival_upgrade_applied(upgrade_id: StringName, stack_count: int, _fin
 	var upgrade_name: String = str(upgrade_id).to_upper() if definition == null else str(definition.display_name)
 	hud.set_survival_build_summary(upgrade_manager.get_build_summary(), upgrade_manager.calculate_final_modifiers())
 	hud.show_banner("%s // STACK %d" % [upgrade_name, stack_count], Color("fff4b8"), false, 0.8)
+	if survival_balance_telemetry != null:
+		survival_balance_telemetry.record_upgrade(wave_manager.current_wave, upgrade_id, stack_count, _run_elapsed)
 
 
 func debug_open_upgrade_selection() -> bool:
@@ -428,20 +430,21 @@ func _on_player_died() -> void:
 	_restart_pending = true
 	run_state = "dead"
 	wave_manager.stop_run()
+	if telemetry != null:
+		telemetry.record_death(player.global_position)
+	if survival_balance_telemetry != null:
+		survival_balance_telemetry.finish(&"death", _run_elapsed)
+	var failure_summary := _build_survival_summary(wave_manager.current_wave)
 	if upgrade_manager != null:
 		upgrade_manager.reset_run()
 	if upgrade_overlay != null:
 		upgrade_overlay.close()
 	_clear_survival_runtime(true)
 	sfx.stop_bus_cues(&"Boss")
-	if telemetry != null:
-		telemetry.record_death(player.global_position)
-	if survival_balance_telemetry != null:
-		survival_balance_telemetry.finish(&"death", _run_elapsed)
 	combat_feedback.request_shake(&"player_death", &"player_death")
 	sfx.play_cue(&"player_death")
 	sfx.duck_music(0.55, 5.0)
-	hud.show_survival_death(wave_manager.current_wave, _run_elapsed, _run_kills, player.last_damage_source)
+	hud.show_survival_failure(failure_summary, player.last_damage_source)
 	await get_tree().create_timer(Tuning.DEATH_RESTART_DELAY).timeout
 	_restart_scene()
 
@@ -460,10 +463,46 @@ func _on_survival_run_completed() -> void:
 		grenade.queue_free()
 	hud.set_survival_status(wave_manager.current_wave, wave_manager.total_waves, 0, 0, 0.0, &"complete", _run_elapsed, _run_kills)
 	_save_survival_records()
-	hud.show_survival_settlement({
+	hud.show_survival_settlement(_build_survival_summary(10))
+	sfx.stop_music(0.45)
+	sfx.play_cue(&"mission_complete")
+
+
+func _build_survival_summary(reached_wave: int) -> Dictionary:
+	var telemetry_snapshot: Dictionary = telemetry.get_snapshot() if telemetry != null else {}
+	var telemetry_weapons: Dictionary = telemetry_snapshot.get("weapons", {}) as Dictionary
+	var total_damage := int((telemetry_snapshot.get("grenades", {}) as Dictionary).get("damage", 0))
+	var total_hits := 0
+	var total_headshots := 0
+	var most_used_weapon: StringName = &"rifle"
+	var most_used_seconds := -1.0
+	for weapon_id in [&"rifle", &"shotgun", &"sniper", &"pistol"]:
+		var stats: Dictionary = telemetry_weapons.get(weapon_id, {}) as Dictionary
+		total_damage += int(stats.get("damage", 0))
+		total_hits += int(stats.get("hits", 0))
+		total_headshots += int(stats.get("headshots", 0))
+		var active_seconds := float(stats.get("active_seconds", 0.0))
+		if active_seconds > most_used_seconds:
+			most_used_seconds = active_seconds
+			most_used_weapon = weapon_id
+	var total_damage_received := 0
+	for amount in (telemetry_snapshot.get("damage_sources", {}) as Dictionary).values():
+		total_damage_received += int(amount)
+	var boss_time := 0.0
+	var boss_started := float(telemetry_snapshot.get("boss_started_at", -1.0))
+	if boss_started >= 0.0:
+		boss_time = maxf(float(telemetry_snapshot.get("elapsed", _run_elapsed)) - boss_started, 0.0)
+	return {
 		"score": score,
 		"elapsed": _run_elapsed,
+		"reached_wave": reached_wave,
 		"kills": _run_kills,
+		"total_damage": total_damage,
+		"damage_received": total_damage_received,
+		"headshots": total_headshots,
+		"headshot_rate": float(total_headshots) / float(maxi(total_hits, 1)),
+		"most_used_weapon": most_used_weapon,
+		"boss_time": boss_time,
 		"highest_combo": highest_combo,
 		"weapon_kills": weapon_kills.duplicate(),
 		"grenade_kills": grenade_kills,
@@ -473,9 +512,7 @@ func _on_survival_run_completed() -> void:
 		"upgrade_history": upgrade_manager.selection_history.duplicate(),
 		"upgrade_build": upgrade_manager.get_build_summary(),
 		"upgrade_final_modifiers": upgrade_manager.calculate_final_modifiers(),
-	})
-	sfx.stop_music(0.45)
-	sfx.play_cue(&"mission_complete")
+	}
 
 
 func _clear_survival_runtime(include_boss: bool = true) -> void:

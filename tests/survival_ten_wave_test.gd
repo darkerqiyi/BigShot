@@ -67,7 +67,8 @@ func _run() -> void:
 	_expect(completed_waves == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], "waves did not complete exactly once: %s" % [completed_waves])
 	_expect(game.wave_manager.completed_waves.size() == 10, "manager completion ledger did not contain ten waves")
 	_expect(max_active <= 7, "active enemy cap exceeded: %d" % max_active)
-	_expect(bool(seen_kinds.get("5:elite", false)), "wave five did not spawn an elite")
+	_expect(bool(seen_kinds.get("6:elite", false)), "wave six did not spawn an elite")
+	_expect(bool(seen_kinds.get("8:elite", false)), "wave eight did not spawn its mini-elite")
 	_expect(bool(seen_kinds.get("9:elite", false)), "wave nine did not spawn an elite")
 	_expect(boss_requested_count == 1, "wave ten Boss was requested %d times" % boss_requested_count)
 	_expect(phase_changes == [2, 3], "Boss phases did not transition once each: %s" % [phase_changes])
@@ -78,6 +79,7 @@ func _run() -> void:
 	_expect(game.projectiles.get_child_count() == 0 and game.hazards.get_child_count() == 0, "hostile dangers remained after completion")
 	_expect(game.hud.state_overlay.visible, "victory settlement was not visible")
 	_expect("BUILD //" in game.hud.state_subtitle.text, "victory settlement omitted the run build")
+	_expect("DAMAGE" in game.hud.state_subtitle.text and "HEADSHOTS" in game.hud.state_subtitle.text and "MOST USED" in game.hud.state_subtitle.text and "BOSS" in game.hud.state_subtitle.text, "victory settlement omitted required run statistics")
 	_expect(game.hud.boss_panel.visible == false, "Boss HUD remained visible at settlement")
 	_expect(game.best_score >= game.score and game.best_time > 0.0, "local survival records were not saved")
 	var saved_records := ConfigFile.new()
@@ -141,7 +143,7 @@ func _run() -> void:
 		var pve_enemy: Node = current_scene._spawn_enemy("assault", Vector2(600, 552), 0.0, false, false)
 		_expect(pve_enemy.max_health == 44, "PVE inherited survival enemy health")
 
-	print("SURVIVAL_TEN_WAVE_METRICS waves=10 ordinary_kills=104 total_kills=%d max_active=%d simulated_seconds=%.2f upgrades=%s fast_start=true boss_death_reset=true pve_isolated=true" % [completed_kills, max_active, completed_seconds, applied_upgrades])
+	print("SURVIVAL_TEN_WAVE_METRICS waves=10 ordinary_kills=115 total_kills=%d max_active=%d simulated_seconds=%.2f upgrades=%s fast_start=true boss_death_reset=true pve_isolated=true stats_panel=true" % [completed_kills, max_active, completed_seconds, applied_upgrades])
 	_finish()
 
 
