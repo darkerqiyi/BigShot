@@ -85,7 +85,8 @@ func _test_capped_shake(game: Node) -> void:
 func _test_merged_impacts(game: Node) -> void:
 	game.combat_feedback.clear()
 	var accepted_before := int(game.combat_feedback.get_debug_snapshot()["accepted_shakes"])
-	var effects_before: int = game.effects.get_child_count()
+	game.impact_effects.clear_all()
+	var effects_before := int(game.impact_effects.get_debug_snapshot()["active"])
 	var details := {
 		"weapon_id": &"shotgun", "team": &"player", "can_damage": true, "is_boss": false,
 		"feedback": &"normal", "direction": Vector2.RIGHT, "distance": 80.0, "max_range": 720.0,
@@ -94,11 +95,11 @@ func _test_merged_impacts(game: Node) -> void:
 	game._on_projectile_impact_detailed(Vector2(400, 400), Color.ORANGE, 0.78, details)
 	game._on_projectile_impact_detailed(Vector2(407, 404), Color.ORANGE, 0.78, details)
 	var accepted_after := int(game.combat_feedback.get_debug_snapshot()["accepted_shakes"])
-	_expect(game.effects.get_child_count() == effects_before + 2, "shotgun did not preserve multiple visible impact points")
+	_expect(int(game.impact_effects.get_debug_snapshot()["active"]) == effects_before + 2, "shotgun did not preserve multiple visible impact points")
 	_expect(accepted_after - accepted_before == 1, "same-frame shotgun pellets were not merged into one camera response")
 	var held_effects := 0
-	for effect in game.effects.get_children():
-		if effect.get("effect_kind") == &"shotgun" and float(effect.get("hold_remaining")) > 0.0:
+	for effect in game.impact_effects._active:
+		if effect.get("effect_kind") == &"shotgun_hit" and float(effect.get("hold_remaining")) > 0.0:
 			held_effects += 1
 	_expect(held_effects == 1, "same-frame shotgun pellets did not merge local visual hold")
 

@@ -1,6 +1,6 @@
 # Current Development Status
 
-Last updated: 2026-07-16 (Asia/Shanghai)
+Last updated: 2026-07-18 (Asia/Shanghai)
 
 ## Current outcome
 
@@ -21,6 +21,8 @@ Last updated: 2026-07-16 (Asia/Shanghai)
 **Combat-character visual unification — Pass.** Player presentation is calibrated to 125% with its original physics footprint, while assault, gunner, shield, and elite enemies now have original warm-palette pixel silhouettes and logic-driven movement, telegraph, attack, recovery, block/break, stagger, hurt, and death poses.
 
 **Combat presentation and pixel-effects upgrade — Pass.** Four fire signatures, pixel trails/muzzle flashes/casings, tiered normal/heavy/block/break/kill effects, role-specific warning accents, restrained Boss hit response, capped optional camera shake, and local heavy-hit emphasis now pass dedicated and full-flow regression gates without changing combat balance or AI timing.
+
+**Enemy hit and death feedback refinement — Pass.** Projectile hits now carry one canonical collision event into pooled pixel effects and numeric damage. Rifle, pistol, shotgun, and rail-lance reactions have distinct visual-only weight; trooper, armor, shield, and Boss armor responses remain readable; lethal reactions use the real final hit point and remain idempotent under same-frame damage.
 
 **Scene pixelization and environment depth — Pass.** The old flat bands, triangle mountains, repeated building rectangles, plain floor/platforms, duplicate crates, tall foreground poles, smooth beacon, and solid Boss gate are replaced by an original four-layer fantasy-tech pixel environment. Exact collision, encounter, camera, Boss, and gameplay contracts remain executable-test locked.
 
@@ -280,6 +282,15 @@ Measured post-change evidence:
 - `tests/survival_headshot_pacing_test.gd` locks exact numeric-only presentation, color, outline, pop phases, 2.0 damage truth, shield/Boss rules, pool cleanup, TTK, and wave values. `tests/audio_system_test.gd` locks bus routing, voice count, level order, signature shape/duration, subtle pitch ranges, source peak/RMS headroom, actual firing/mechanical event wiring, pause mix, Boss priority, and music ducking.
 - `tests/sniper_accuracy_test.gd` locks exact muzzle-to-mouse direction and projectile rotation through PVE/survival, bidirectional near/mid/far and vertical aim, standing/moving/airborne velocities, and 720p/1080p/1440p canvas transforms. Its catalog guard also locks damage, rate, projectile speed/count, magazine, reload, and penetration values.
 - `./scripts/verify_prototype.sh` passes PVE, all player abilities, four-weapon combat, sniper precision, Boss, pause/restart, Roguelite isolation, structural and scripted ten-wave survival, rifle-only pressure, and the 120-frame runtime check.
+
+## Enemy hit and death feedback refinement
+
+- Player projectile impacts now publish `hit_position`, `hit_normal`, `damage_amount`, `is_headshot`, `weapon_type`, `target_material`, and `is_lethal` alongside the existing compatibility fields. Head/body selection and final damage still resolve only once before this presentation event.
+- Ordinary rifle hits use a 55 ms local reaction, pistol hits 75 ms, shotgun hits 120 ms, and rail-lance hits 145 ms. These offsets and rotations affect only procedural drawing; physics velocity, AI state, attack timing, damage, health, and weapon data remain unchanged.
+- Troopers use warm restrained sparks, armor uses sharper blue-white metal sparks plus reduced pose motion, shield blocks retain their dedicated blue-white cross without a false body reaction, and automatic Boss hits remain local to the layered armor visual.
+- Headshots add a compact gold ring/star at the true head collision point while retaining numeric-only damage labels. Lethal sparks use the last collision point; shotgun deaths lean farther back, rail-lance deaths lose support faster, and the enemy disables AI, attack state, body collision, and both hurtboxes before the visual finishes.
+- `ImpactEffectManager` owns 56 preallocated pixel effects, caps active effects at 40, limits one shotgun volley to four visible sparks per target per physics frame, and preserves headshot/lethal effects over low-priority rifle sparks. `DamageNumberManager` remains the independent bounded 64-label pool.
+- `tests/enemy_hit_feedback_test.gd` locks the canonical event, exact four-weapon visual durations/order, material selection, shield suppression, lethal idempotence, collision shutdown, unchanged health/damage/rate values, and pool accounting. The complete verifier still passes PVE and both survival playthrough routes through Boss settlement.
 
 ## Validation evidence
 

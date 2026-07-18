@@ -261,7 +261,7 @@ Prototype status: **Pass** — four differentiated firearms, per-weapon magazine
 
 ### Phase 3 — Hit, hurt, and audiovisual feedback
 
-Prototype status: **Pass for current prototype scope** — weapon-specific pixel effects, layered hit/block/break/kill feedback, capped camera trauma, local peak-frame emphasis, eight-bus original procedural audio/music, bounded/spatial playback, pause mix controls, and cleanup gates pass; subjective listening remains a human test.
+Prototype status: **Pass for current prototype scope** — weapon/material-specific pooled pixel effects, canonical collision-point hit events, layered hit/block/break/headshot/kill feedback, capped camera trauma, local peak-frame emphasis, eight-bus original procedural audio/music, bounded/spatial playback, pause mix controls, and cleanup gates pass; subjective feel/listening remains a human test.
 
 - Add readable hit pause/flash, recoil, particles, camera impulse, audio hooks, invulnerability signaling, and tuning controls using original placeholders.
 

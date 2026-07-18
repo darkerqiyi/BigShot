@@ -32,6 +32,7 @@ var recovery_remaining := 0.0
 var transition_remaining := 0.0
 var charge_remaining := 0.0
 var last_hit_feedback: StringName = &"boss_normal"
+var last_damage_result: Dictionary = {}
 
 var _pending_attack: StringName = &""
 var _last_attack: StringName = &""
@@ -210,9 +211,10 @@ func _finish_attack(recovery: float) -> void:
 	velocity.x = 0.0
 
 
-func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vector2 = Vector2.ZERO, context: Dictionary = {}) -> void:
+func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vector2 = Vector2.ZERO, context: Dictionary = {}) -> Dictionary:
 	if not alive or not active or invulnerable:
-		return
+		return {}
+	var health_before := health
 	health = maxi(health - amount, 0)
 	velocity += impulse * 0.12
 	var weapon_id: StringName = context.get("weapon_id", &"")
@@ -220,12 +222,38 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vec
 	last_hit_feedback = &"boss_heavy" if heavy_hit else &"boss_normal"
 	_flash_white(heavy_hit, hit_position)
 	var next_phase := 3 if health <= int(MAX_HEALTH * 0.30) else (2 if health <= int(MAX_HEALTH * 0.65) else 1)
+	var source_direction: Vector2 = context.get("direction", Vector2.ZERO)
+	last_damage_result = {
+		"attacker": context.get("attacker"),
+		"target": self,
+		"base_damage": int(context.get("base_damage", amount)),
+		"requested_damage": amount,
+		"final_damage": health_before - health,
+		"damage_amount": health_before - health,
+		"hit_position": hit_position,
+		"hit_normal": context.get("hit_normal", -source_direction.normalized() if source_direction.length_squared() > 0.01 else Vector2.UP),
+		"hit_zone": &"core" if bool(context.get("core_hit", false)) else &"armor",
+		"damage_type": context.get("damage_kind", &"unknown"),
+		"weapon_id": weapon_id,
+		"weapon_type": weapon_id,
+		"blocked": false,
+		"critical": false,
+		"headshot": false,
+		"is_headshot": false,
+		"source_direction": source_direction,
+		"target_material": &"boss_armor",
+		"is_lethal": health <= 0,
+		"mitigation": 0,
+		"health_before": health_before,
+		"health_after": health,
+	}
 	health_changed.emit(health, MAX_HEALTH, next_phase)
 	if health <= 0:
 		last_hit_feedback = &"kill"
 		_die()
 	elif next_phase > phase:
 		_begin_phase_transition(next_phase)
+	return last_damage_result.duplicate(true)
 
 
 func _begin_phase_transition(next_phase: int) -> void:
@@ -252,9 +280,8 @@ func _update_transition(delta: float) -> void:
 
 
 func _flash_white(heavy: bool = false, hit_position: Vector2 = Vector2.ZERO) -> void:
-	# Presentation is local and finite; the visual never drives damage or AI state.
-	body_shape.modulate = Color.WHITE
-	core.modulate = Color.WHITE
+	# Keep feedback local to the layered visual so automatic fire never flashes
+	# or shakes the entire Boss body.
 	visual.play_hurt(heavy, hit_position)
 
 

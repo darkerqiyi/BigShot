@@ -376,10 +376,13 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vec
 		last_hit_feedback = &"headshot"
 	health = maxi(health - applied_damage, 0)
 	var final_damage := health_before - health
+	var source_direction: Vector2 = context.get("direction", Vector2.ZERO)
+	var target_material := get_target_material(was_blocked)
+	var is_lethal := health <= 0
 	velocity += impulse
 	_update_health_bar()
 	if not was_blocked:
-		_flash_white()
+		visual.play_hit_reaction(last_damage_weapon_id, target_material, headshot, is_lethal, source_direction)
 		hurt_feedback.emit(self, last_hit_feedback)
 	_sync_visual(0.0)
 	last_damage_result = {
@@ -388,14 +391,20 @@ func take_damage(amount: int, impulse: Vector2 = Vector2.ZERO, hit_position: Vec
 		"base_damage": int(context.get("base_damage", amount)),
 		"requested_damage": amount,
 		"final_damage": final_damage,
+		"damage_amount": final_damage,
 		"hit_position": hit_position,
+		"hit_normal": context.get("hit_normal", -source_direction.normalized() if source_direction.length_squared() > 0.01 else Vector2.UP),
 		"hit_zone": hit_zone,
 		"damage_type": context.get("damage_kind", &"unknown"),
 		"weapon_id": last_damage_weapon_id,
+		"weapon_type": last_damage_weapon_id,
 		"blocked": was_blocked,
 		"critical": headshot,
 		"headshot": headshot,
-		"source_direction": context.get("direction", Vector2.ZERO),
+		"is_headshot": headshot,
+		"source_direction": source_direction,
+		"target_material": target_material,
+		"is_lethal": is_lethal,
 		"mitigation": maxi(amount - applied_damage, 0),
 		"health_before": health_before,
 		"health_after": health,
@@ -432,7 +441,15 @@ func _update_health_bar() -> void:
 
 
 func _flash_white() -> void:
-	visual.play_hurt(1.0 if kind in ["elite", "heavy"] and stagger_remaining > 0.0 else 0.65)
+	visual.play_hit_reaction(last_damage_weapon_id, get_target_material(false), false, false, Vector2(_facing, 0.0))
+
+
+func get_target_material(blocked_hit: bool = false) -> StringName:
+	if blocked_hit:
+		return &"shield"
+	if kind in ["elite", "heavy", "shield"]:
+		return &"armor"
+	return &"trooper"
 
 
 func _die() -> void:
@@ -451,7 +468,12 @@ func _die() -> void:
 	head_hurtbox.collision_layer = 0
 	$HealthBar.visible = false
 	visual.set_facing(int(signf(velocity.x)) if not is_zero_approx(velocity.x) else int(_facing))
-	visual.play_death()
+	visual.play_death(
+		StringName(last_damage_result.get("weapon_id", &"unknown")),
+		bool(last_damage_result.get("headshot", false)),
+		Vector2(last_damage_result.get("source_direction", Vector2.ZERO)),
+		StringName(last_damage_result.get("target_material", get_target_material(false))),
+	)
 	var points := 500 if kind in ["elite", "heavy"] else (180 if kind == "shield" else (150 if kind in ["assault", "runner"] else 100))
 	died.emit(self, points)
 	var tween := create_tween()
