@@ -481,6 +481,8 @@ func _on_survival_run_completed() -> void:
 func _clear_survival_runtime(include_boss: bool = true) -> void:
 	if damage_numbers != null:
 		damage_numbers.clear_all()
+	if impact_effects != null:
+		impact_effects.clear_all()
 	for container in [enemies, projectiles, hazards, grenades]:
 		for child in container.get_children():
 			child.queue_free()

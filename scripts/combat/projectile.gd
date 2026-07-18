@@ -70,6 +70,11 @@ func _physics_process(delta: float) -> void:
 		var collider := _damage_target_for(raw_collider)
 		var can_damage: bool = collider != null and ((team == &"player" and collider.is_in_group("enemies")) or (team == &"enemy" and collider.is_in_group("player")))
 		var hit_distance := distance_travelled + global_position.distance_to(hit["position"])
+		var hit_normal: Vector2 = hit.get("normal", -direction)
+		if hit_normal.length_squared() < 0.01:
+			hit_normal = -direction
+		else:
+			hit_normal = hit_normal.normalized()
 		var applied_damage := 0
 		var base_damage_at_distance := 0
 		var hit_zone: StringName = hit.get("hit_zone", &"body")
@@ -89,6 +94,7 @@ func _physics_process(delta: float) -> void:
 				"weapon_id": weapon_id,
 				"team": team,
 				"direction": direction,
+				"hit_normal": hit_normal,
 				"impact_strength": impact_strength,
 				"source": source_tag,
 				"damage_kind": &"projectile",
@@ -113,6 +119,14 @@ func _physics_process(delta: float) -> void:
 		var target_kind := "terrain"
 		if can_damage:
 			target_kind = "boss" if collider.is_in_group("boss") else (str(collider.get("kind")) if team == &"player" else "player")
+		var blocked := bool(damage_result.get("blocked", false))
+		var target_material := _target_material_for(collider, target_kind, blocked)
+		var is_lethal := false
+		if can_damage:
+			if damage_result.has("health_after"):
+				is_lethal = int(damage_result.get("health_after", 1)) <= 0
+			elif collider.get("alive") != null:
+				is_lethal = not bool(collider.get("alive"))
 		impact_detailed.emit(hit["position"], impact_color, strength, {
 			"target": collider,
 			"target_id": collider.get_instance_id() if collider != null else 0,
@@ -126,14 +140,22 @@ func _physics_process(delta: float) -> void:
 			"applied_damage": applied_damage,
 			"base_damage": base_damage_at_distance,
 			"final_damage": applied_damage,
+			"damage_amount": applied_damage,
+			"hit_position": hit["position"],
+			"hit_normal": hit_normal,
 			"hit_zone": hit_zone,
 			"critical": critical,
 			"headshot": critical,
-			"blocked": bool(damage_result.get("blocked", false)),
+			"is_headshot": critical,
+			"blocked": blocked,
 			"mitigation": int(damage_result.get("mitigation", 0)),
 			"feedback": feedback,
 			"penetration_index": _penetration_index,
 			"direction": direction,
+			"source_direction": direction,
+			"weapon_type": weapon_id,
+			"target_material": target_material,
+			"is_lethal": is_lethal,
 		})
 		var blocks_penetration := true
 		if can_damage and penetration_remaining > 0:
@@ -205,6 +227,20 @@ func _append_target_exclusions(target: Node) -> void:
 	var head := target.get_node_or_null("HeadHurtbox")
 	if head is CollisionObject2D:
 		_excluded_rids.append((head as CollisionObject2D).get_rid())
+
+
+func _target_material_for(target: Node, target_kind: String, blocked: bool) -> StringName:
+	if target == null:
+		return &"terrain"
+	if blocked:
+		return &"shield"
+	if target.is_in_group("boss"):
+		return &"boss_armor"
+	if target_kind in ["elite", "heavy", "shield"]:
+		return &"armor"
+	if target.is_in_group("player"):
+		return &"player"
+	return &"trooper"
 
 
 static func calculate_damage_at_distance(base_damage: int, distance: float, start: float, end: float, minimum_multiplier: float) -> int:

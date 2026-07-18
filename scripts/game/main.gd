@@ -2,7 +2,7 @@ extends Node2D
 
 const EnemyScene := preload("res://scenes/enemies/enemy.tscn")
 const ProjectileScene := preload("res://scenes/combat/projectile.tscn")
-const ImpactEffectScene := preload("res://scenes/effects/impact_effect.tscn")
+const ImpactEffectManagerScript := preload("res://scripts/effects/impact_effect_manager.gd")
 const GroundHazardScene := preload("res://scenes/combat/ground_hazard.tscn")
 const PixelCasingScene := preload("res://scenes/effects/pixel_casing.tscn")
 const CombatFeedbackScript := preload("res://scripts/combat/combat_feedback.gd")
@@ -100,6 +100,7 @@ var _grenade_tutorial_shown := false
 var _active_ability_tutorial: StringName = &""
 var enemy_balance_mode: StringName = &"pve"
 var damage_numbers: DamageNumberManager
+var impact_effects: Node
 static var _resume_boss_checkpoint_next := false
 static var _resume_run_stats_next: Dictionary = {}
 
@@ -130,6 +131,9 @@ func _ready() -> void:
 	damage_numbers = DamageNumberManagerScript.new()
 	damage_numbers.name = "DamageNumbers"
 	effects.add_child(damage_numbers)
+	impact_effects = ImpactEffectManagerScript.new()
+	impact_effects.name = "ImpactEffects"
+	effects.add_child(impact_effects)
 	player.add_to_group("player")
 	player.volley_requested.connect(_spawn_player_volley)
 	player.health_changed.connect(hud.set_health)
@@ -576,7 +580,7 @@ func _on_projectile_impact_detailed(hit_position: Vector2, color: Color, strengt
 	var weapon_id: StringName = details.get("weapon_id", &"")
 	var feedback: StringName = details.get("feedback", &"normal")
 	var can_damage := bool(details.get("can_damage", false))
-	var critical := bool(details.get("critical", false))
+	var critical := bool(details.get("is_headshot", details.get("critical", false)))
 	var target := details.get("target") as Node
 	if team == &"player" and can_damage and target != null and damage_numbers != null:
 		damage_numbers.show_result(target, hit_position + Vector2(0, -10), details)
@@ -593,22 +597,25 @@ func _on_projectile_impact_detailed(hit_position: Vector2, color: Color, strengt
 	if can_damage:
 		if bool(details.get("is_boss", false)):
 			profile = &"boss_heavy" if feedback == &"boss_heavy" else &"boss_normal"
-			effect_kind = profile
+			effect_kind = &"boss_heavy" if profile == &"boss_heavy" else &"boss_armor_hit"
 		elif critical:
 			profile = &"headshot"
-			effect_kind = &"sniper"
+			effect_kind = &"headshot"
 			effect_strength = maxf(effect_strength, 0.92)
 		elif feedback == &"heavy" or weapon_id == &"sniper":
 			profile = &"sniper_hit" if weapon_id == &"sniper" else &"heavy_hit"
-			effect_kind = &"sniper" if weapon_id == &"sniper" else &"heavy"
+			effect_kind = &"sniper_hit" if weapon_id == &"sniper" else &"heavy"
 		elif weapon_id == &"shotgun":
 			profile = &"shotgun_hit"
-			effect_kind = &"shotgun"
+			effect_kind = &"shotgun_hit"
 			var range_ratio := float(details.get("distance", 0.0)) / maxf(float(details.get("max_range", 1.0)), 1.0)
 			effect_strength *= lerpf(1.0, 0.58, clampf(range_ratio, 0.0, 1.0))
+		elif weapon_id == &"pistol":
+			profile = &"normal_hit"
+			effect_kind = &"pistol_hit"
 		else:
 			profile = &"heavy_hit" if strength >= Tuning.ACCENT_HIT_STRENGTH else &"normal_hit"
-			effect_kind = &"heavy" if profile == &"heavy_hit" else &"normal"
+			effect_kind = &"heavy" if profile == &"heavy_hit" else &"rifle_hit"
 	var merge_group: StringName = profile
 	if weapon_id == &"shotgun":
 		merge_group = &"shotgun_impact_volley"
@@ -617,7 +624,7 @@ func _on_projectile_impact_detailed(hit_position: Vector2, color: Color, strengt
 	elif critical:
 		merge_group = StringName("headshot_%d" % int(details.get("target_id", 0)))
 	var hold: float = float(combat_feedback.request_visual_hold(profile, merge_group))
-	_spawn_impact(hit_position, color, effect_strength, false, effect_kind, direction, hold)
+	_spawn_impact(hit_position, color, effect_strength, false, effect_kind, direction, hold, details)
 	if team != &"player":
 		return
 	if critical:
@@ -630,6 +637,8 @@ func _on_projectile_impact_detailed(hit_position: Vector2, color: Color, strengt
 		sfx.play_world_cue(&"boss_hit_normal", hit_position, player.global_position)
 	elif profile in [&"sniper_hit", &"heavy_hit"]:
 		sfx.play_world_cue(&"impact_heavy", hit_position, player.global_position, true)
+	elif StringName(details.get("target_material", &"trooper")) == &"armor":
+		sfx.play_world_cue(&"impact_armor", hit_position, player.global_position)
 	elif profile == &"wall_hit":
 		sfx.play_world_cue(&"impact_wall", hit_position, player.global_position)
 	else:
@@ -651,11 +660,11 @@ func _spawn_impact(
 	kind: StringName = &"normal",
 	direction: Vector2 = Vector2.ZERO,
 	visual_hold: float = 0.0,
+	details: Dictionary = {},
 ) -> void:
-	var effect := ImpactEffectScene.instantiate()
-	effect.global_position = effect_position
-	effect.configure(color, strength, large, kind, direction, visual_hold)
-	effects.add_child(effect)
+	if impact_effects == null:
+		return
+	impact_effects.spawn_effect(effect_position, color, strength, large, kind, direction, visual_hold, details)
 
 
 func _spawn_casing(origin: Vector2, direction: Vector2, weapon_id: StringName) -> void:
@@ -689,10 +698,27 @@ func _on_enemy_died(enemy: Node, points: int) -> void:
 	_run_kills += 1
 	score += points
 	hud.set_score(score)
-	var killed_by_headshot := bool((enemy.get("last_damage_result") as Dictionary).get("headshot", false))
+	var damage_result := enemy.get("last_damage_result") as Dictionary
+	var killed_by_headshot := bool(damage_result.get("headshot", false))
 	var heavy_death := str(enemy.get("kind")) in ["elite", "heavy", "shield"] or killed_by_headshot
 	var death_profile: StringName = &"kill_heavy" if heavy_death else &"kill_light"
-	_spawn_impact(enemy.global_position, Color("ffd35a") if killed_by_headshot else Color(1.0, 0.32, 0.16, 1), 0.8 if heavy_death else 0.62, true, death_profile)
+	var death_kind: StringName = &"headshot_kill" if killed_by_headshot else death_profile
+	var death_position: Vector2 = damage_result.get("hit_position", enemy.global_position)
+	_spawn_impact(
+		death_position,
+		Color("ffd35a") if killed_by_headshot else Color(1.0, 0.32, 0.16, 1),
+		0.8 if heavy_death else 0.62,
+		true,
+		death_kind,
+		Vector2(damage_result.get("source_direction", Vector2.UP)),
+		0.0,
+		{
+			"target_id": enemy.get_instance_id(),
+			"target_material": damage_result.get("target_material", &"trooper"),
+			"is_headshot": killed_by_headshot,
+			"is_lethal": true,
+		},
+	)
 	sfx.play_world_cue(&"enemy_kill_heavy" if heavy_death else &"enemy_kill_light", enemy.global_position, player.global_position, heavy_death)
 	combat_feedback.request_shake(death_profile, StringName("death_%s" % enemy.get_instance_id()))
 	if run_state in ["combat", "boss_ready"]:
@@ -784,6 +810,8 @@ func _on_player_died() -> void:
 		return
 	if damage_numbers != null:
 		damage_numbers.clear_all()
+	if impact_effects != null:
+		impact_effects.clear_all()
 	var boss_checkpoint := run_state == "boss"
 	_resume_boss_checkpoint_next = boss_checkpoint
 	_resume_run_stats_next = {

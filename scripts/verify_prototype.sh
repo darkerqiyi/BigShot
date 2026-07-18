@@ -146,6 +146,17 @@ if [[ -n "$filtered_errors" ]]; then
 fi
 grep "COMBAT_FEEDBACK_PASS" "$LOG_DIR/combat_feedback.log"
 
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/enemy_hit_feedback_test.gd >"$LOG_DIR/enemy_hit_feedback.log" 2>&1; then
+	cat "$LOG_DIR/enemy_hit_feedback.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/enemy_hit_feedback.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "ENEMY_HIT_FEEDBACK_PASS" "$LOG_DIR/enemy_hit_feedback.log"
+
 if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/environment_visual_test.gd >"$LOG_DIR/environment_visual.log" 2>&1; then
 	cat "$LOG_DIR/environment_visual.log" >&2
 	exit 1

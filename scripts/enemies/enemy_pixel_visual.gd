@@ -29,6 +29,12 @@ var animation_phase := 0.0
 var telegraph_progress := 0.0
 var guard_open := false
 var hurt_remaining := 0.0
+var hit_reaction_duration := 0.0
+var hit_pose_offset := Vector2.ZERO
+var hit_pose_rotation := 0.0
+var hit_material: StringName = &"trooper"
+var hit_weapon: StringName = &"rifle"
+var hit_was_headshot := false
 var block_remaining := 0.0
 var attack_remaining := 0.0
 var dead := false
@@ -44,6 +50,12 @@ func configure(kind: String) -> void:
 func reset_visual() -> void:
 	dead = false
 	hurt_remaining = 0.0
+	hit_reaction_duration = 0.0
+	hit_pose_offset = Vector2.ZERO
+	hit_pose_rotation = 0.0
+	hit_material = &"trooper"
+	hit_weapon = &"rifle"
+	hit_was_headshot = false
 	block_remaining = 0.0
 	attack_remaining = 0.0
 	animation_state = &"idle"
@@ -111,10 +123,50 @@ func play_attack(attack_kind: StringName) -> void:
 
 
 func play_hurt(strength: float = 1.0) -> void:
+	# Compatibility entry for non-projectile callers. New combat hits use the
+	# weapon/material-aware visual-only reaction below.
+	play_hit_reaction(&"sniper" if strength >= 0.95 else &"rifle", &"trooper", false, false, Vector2(facing, 0))
+
+
+func play_hit_reaction(
+	weapon_id: StringName,
+	material: StringName,
+	is_headshot: bool,
+	is_lethal: bool,
+	source_direction: Vector2,
+) -> void:
 	if dead:
 		return
-	var requested := 0.10 + clampf(strength, 0.0, 1.0) * 0.05
-	hurt_remaining = minf(maxf(hurt_remaining, requested), 0.18)
+	hit_weapon = weapon_id
+	hit_material = material
+	hit_was_headshot = is_headshot
+	var duration := 0.055
+	var pose_strength := 1.0
+	match weapon_id:
+		&"pistol":
+			duration = 0.075
+			pose_strength = 1.25
+		&"shotgun":
+			duration = 0.12
+			pose_strength = 2.6
+		&"sniper":
+			duration = 0.145
+			pose_strength = 3.2
+		_:
+			duration = 0.055
+			pose_strength = 0.8
+	if material in [&"armor", &"boss_armor"]:
+		pose_strength *= 0.48
+	if is_headshot:
+		duration += 0.018
+		pose_strength *= 1.18
+	if is_lethal:
+		duration = minf(duration + 0.02, 0.17)
+	var hit_sign := signf(source_direction.x) if absf(source_direction.x) > 0.01 else float(facing)
+	hit_pose_offset = Vector2(hit_sign * pose_strength, -pose_strength * (0.45 if is_headshot else 0.15))
+	hit_pose_rotation = hit_sign * deg_to_rad(1.8 * pose_strength)
+	hit_reaction_duration = duration
+	hurt_remaining = minf(maxf(hurt_remaining, duration), 0.17)
 	queue_redraw()
 
 
@@ -125,20 +177,35 @@ func play_block(strength: float) -> void:
 	queue_redraw()
 
 
-func play_death() -> void:
+func play_death(
+	weapon_id: StringName = &"unknown",
+	is_headshot: bool = false,
+	source_direction: Vector2 = Vector2.ZERO,
+	_material: StringName = &"trooper",
+) -> void:
 	if dead:
 		return
 	dead = true
 	animation_state = &"death"
 	muzzle_flash.visible = false
-	var target_rotation := 1.18 * facing
+	var fall_direction := signf(source_direction.x) if absf(source_direction.x) > 0.01 else float(facing)
+	var target_rotation := 1.18 * fall_direction
 	if enemy_kind == "shield":
-		target_rotation = 0.82 * facing
+		target_rotation = 0.82 * fall_direction
 	elif enemy_kind == "elite":
-		target_rotation = 0.42 * facing
+		target_rotation = 0.42 * fall_direction
+	if weapon_id == &"shotgun":
+		target_rotation *= 1.18
+	elif weapon_id == &"sniper":
+		target_rotation *= 1.28
+	elif is_headshot:
+		target_rotation *= 1.12
+	var fall_distance := 8.0 if weapon_id == &"shotgun" else (5.0 if weapon_id == &"sniper" else 2.0)
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(self, "rotation", target_rotation, 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_property(self, "position:y", 8.0 if enemy_kind != "elite" else 4.0, 0.32)
+	var death_duration := 0.25 if weapon_id == &"sniper" else (0.30 if weapon_id == &"shotgun" else 0.32)
+	tween.tween_property(self, "rotation", target_rotation, death_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "position:x", fall_direction * fall_distance, death_duration)
+	tween.tween_property(self, "position:y", 8.0 if enemy_kind != "elite" else 4.0, death_duration)
 	queue_redraw()
 
 
@@ -179,6 +246,9 @@ func _map_logic_state(logic_state: StringName, current_velocity: Vector2, is_act
 
 
 func _draw() -> void:
+	if hurt_remaining > 0.0 and hit_reaction_duration > 0.0:
+		var pose_ratio := clampf(hurt_remaining / hit_reaction_duration, 0.0, 1.0)
+		draw_set_transform((hit_pose_offset * pose_ratio).round(), hit_pose_rotation * pose_ratio)
 	match enemy_kind:
 		"assault":
 			_draw_assault()
@@ -343,8 +413,15 @@ func _draw_standard_legs(bob: int, fill: Color) -> void:
 func _draw_hurt_edge() -> void:
 	var width := 23 if enemy_kind == "elite" else 16
 	var top := -36 if enemy_kind == "elite" else -31
-	_r(-width, top, 4, 22, HURT)
-	_r(width - 4, top + 7, 4, 18, HURT)
+	var edge_color := HURT
+	if hit_material == &"armor":
+		edge_color = METAL_LIGHT
+	elif hit_material == &"shield":
+		edge_color = BLOCK
+	elif hit_was_headshot:
+		edge_color = GOLD
+	_r(-width, top, 4, 22, edge_color)
+	_r(width - 4, top + 7, 4, 18, edge_color)
 
 
 func _move_bob() -> int:
