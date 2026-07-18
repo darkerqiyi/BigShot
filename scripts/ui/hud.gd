@@ -369,14 +369,21 @@ func _survival_parameter_text(modifiers: Dictionary = _survival_final_modifiers)
 
 
 func show_survival_death(wave: int, elapsed: float, kills: int, damage_source: String) -> void:
+	show_survival_failure({"reached_wave": wave, "elapsed": elapsed, "kills": kills}, damage_source)
+
+
+func show_survival_failure(summary: Dictionary, damage_source: String) -> void:
 	get_tree().paused = false
 	_clear_transient_labels()
 	_overlay_mode = &"death"
 	state_title.text = "SURVIVAL RUN LOST"
 	state_title.modulate = Style.DANGER
-	var elapsed_seconds := int(round(elapsed))
-	state_subtitle.text = "REACHED WAVE %02d  •  TIME %02d:%02d\nKILLS %03d  •  LAST HIT // %s" % [
-		wave, elapsed_seconds / 60, elapsed_seconds % 60, kills, damage_source.to_upper(),
+	var elapsed_seconds := int(round(float(summary.get("elapsed", 0.0))))
+	var headshot_rate := float(summary.get("headshot_rate", 0.0)) * 100.0
+	state_subtitle.text = "REACHED WAVE %02d  •  TIME %02d:%02d  •  KILLS %03d\nDAMAGE %05d  •  TAKEN %04d  •  HEADSHOTS %02d / %.0f%%\nMOST USED // %s  •  LAST HIT // %s\nBUILD // %s" % [
+		int(summary.get("reached_wave", 0)), elapsed_seconds / 60, elapsed_seconds % 60, int(summary.get("kills", 0)),
+		int(summary.get("total_damage", 0)), int(summary.get("damage_received", 0)), int(summary.get("headshots", 0)), headshot_rate,
+		_weapon_display_name(StringName(summary.get("most_used_weapon", &"rifle"))), damage_source.to_upper(), _survival_build_text,
 	]
 	primary_button.text = "RESTART SURVIVAL"
 	secondary_button.text = "RETURN TO MENU"
@@ -400,9 +407,11 @@ func show_survival_settlement(summary: Dictionary) -> void:
 		build_parts.append("%s x%d" % [str(item.get("display_name", item.get("id", "UPGRADE"))), int(item.get("stacks", 0))])
 	var build_text := "NONE" if build_parts.is_empty() else "  •  ".join(build_parts)
 	var final_text := _survival_parameter_text(summary.get("upgrade_final_modifiers", {}) as Dictionary)
-	state_subtitle.text = "10 WAVES CLEARED  •  SCORE %06d  •  TIME %02d:%02d\nKILLS %03d  •  BEST COMBO %02d  •  ROLL EVADES %02d\nAUTO %02d  SCATTER %02d  LANCE %02d  SIDE %02d  GRENADE %02d\nBUILD // %s\nFINAL // %s\nRECORD %06d  •  BEST TIME %02d:%02d" % [
+	var boss_seconds := int(round(float(summary.get("boss_time", 0.0))))
+	state_subtitle.text = "10 WAVES CLEARED  •  SCORE %06d  •  TIME %02d:%02d\nKILLS %03d  •  DAMAGE %05d  •  TAKEN %04d  •  HEADSHOTS %02d / %.0f%%\nMOST USED // %s  •  BOSS %02d:%02d  •  BEST COMBO %02d  •  ROLL EVADES %02d\nAUTO %02d  SCATTER %02d  LANCE %02d  SIDE %02d  GRENADE %02d\nBUILD // %s\nFINAL // %s\nRECORD %06d  •  BEST TIME %02d:%02d" % [
 		int(summary.get("score", 0)), elapsed_seconds / 60, elapsed_seconds % 60,
-		int(summary.get("kills", 0)), int(summary.get("highest_combo", 0)), int(summary.get("roll_evades", 0)),
+		int(summary.get("kills", 0)), int(summary.get("total_damage", 0)), int(summary.get("damage_received", 0)), int(summary.get("headshots", 0)), float(summary.get("headshot_rate", 0.0)) * 100.0,
+		_weapon_display_name(StringName(summary.get("most_used_weapon", &"rifle"))), boss_seconds / 60, boss_seconds % 60, int(summary.get("highest_combo", 0)), int(summary.get("roll_evades", 0)),
 		int(weapon_kills.get(&"rifle", 0)), int(weapon_kills.get(&"shotgun", 0)), int(weapon_kills.get(&"sniper", 0)), int(weapon_kills.get(&"pistol", 0)), int(summary.get("grenade_kills", 0)),
 		build_text,
 		final_text,
@@ -413,6 +422,15 @@ func show_survival_settlement(summary: Dictionary) -> void:
 	secondary_button.visible = true
 	audio_settings.visible = false
 	_show_state_overlay()
+
+
+func _weapon_display_name(weapon_id: StringName) -> String:
+	return {
+		&"rifle": "AUTO RIFLE",
+		&"shotgun": "SCATTERGUN",
+		&"sniper": "RAIL LANCE",
+		&"pistol": "SIDEARM",
+	}.get(weapon_id, str(weapon_id).to_upper())
 
 
 func show_boss(boss_name: String, maximum: int) -> void:

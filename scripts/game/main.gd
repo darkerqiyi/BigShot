@@ -373,6 +373,7 @@ func _spawn_enemy(kind: String, spawn_position: Vector2, activation: float, coun
 	var enemy := EnemyScene.instantiate()
 	enemy.kind = kind
 	enemy.balance_mode = enemy_balance_mode
+	enemy.balance_wave = (10 if boss_summon else encounter_id) if enemy_balance_mode == &"survival" else 0
 	enemy.target = player
 	enemy.position = spawn_position
 	enemy.activation_x = activation
@@ -585,7 +586,7 @@ func _on_projectile_impact_detailed(hit_position: Vector2, color: Color, strengt
 	if team == &"player" and can_damage and target != null and damage_numbers != null:
 		damage_numbers.show_result(target, hit_position + Vector2(0, -10), details)
 	if telemetry != null and team == &"player" and can_damage:
-		telemetry.record_hit(weapon_id, int(details.get("applied_damage", 0)), feedback)
+		telemetry.record_hit(weapon_id, int(details.get("applied_damage", 0)), feedback, critical)
 	if team == &"player" and can_damage:
 		_run_hits += 1
 	var direction: Vector2 = details.get("direction", Vector2.RIGHT)

@@ -36,11 +36,15 @@ func _run() -> void:
 	_expect(candidates.size() == 3, "minimal loop did not provide three cards")
 	var candidate_ids: Dictionary = {}
 	var candidate_categories: Dictionary = {}
+	var candidate_families: Dictionary = {}
 	for card in candidates:
 		candidate_ids[StringName(card["id"])] = true
 		candidate_categories[StringName(card["category"])] = true
+		candidate_families[StringName(card.get("family", &""))] = true
+		_expect(" -> " in str(card.get("value_preview", "")), "upgrade card omitted its before/after value preview")
 	_expect(candidate_ids.size() == 3, "candidate cards contained duplicates")
 	_expect(candidate_categories.size() >= 2, "candidate cards did not span two categories")
+	_expect(candidate_families.size() == 3, "candidate cards did not span output, survival and mobility families")
 	_expect(candidate_ids.has(&"endurance_core") and candidate_ids.has(&"evasive_circuit") and candidate_ids.has(&"high_explosive"), "minimal candidate pool was incorrect")
 	for index in range(candidates.size()):
 		_expect(game.upgrade_overlay.cards[index].text.contains("[%s]" % str(candidates[index]["icon"]).to_upper()), "upgrade card did not display its placeholder icon badge")

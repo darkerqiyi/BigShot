@@ -21,6 +21,10 @@ func configure(player: Node, run_telemetry: Node, elapsed: float = 0.0) -> void:
 
 
 func begin_wave(wave_number: int, title: String, elapsed: float) -> void:
+	if _waves.has(wave_number - 1):
+		var previous: Dictionary = _waves[wave_number - 1]
+		if float(previous.get("ended_at", -1.0)) >= 0.0:
+			previous["wait_after"] = snappedf(elapsed - float(previous["ended_at"]), 0.01)
 	_current_wave = wave_number
 	_last_elapsed = elapsed
 	_waves[wave_number] = {
@@ -29,6 +33,7 @@ func begin_wave(wave_number: int, title: String, elapsed: float) -> void:
 		"started_at": elapsed,
 		"ended_at": -1.0,
 		"duration": -1.0,
+		"wait_after": -1.0,
 		"spawned": {},
 		"defeated": {},
 		"weapon_kills": {},
@@ -45,6 +50,7 @@ func begin_wave(wave_number: int, title: String, elapsed: float) -> void:
 		"grenades_start": _grenade_snapshot(),
 		"grenades": {},
 		"supply": {},
+		"upgrade": {},
 	}
 
 
@@ -94,6 +100,16 @@ func record_supply(health: int, ammo_floor: float, grenades: int) -> void:
 		"health": health,
 		"ammo_floor": snappedf(ammo_floor, 0.01),
 		"grenades": grenades,
+	}
+
+
+func record_upgrade(completed_wave: int, upgrade_id: StringName, stack_count: int, elapsed: float) -> void:
+	if not _waves.has(completed_wave):
+		return
+	_waves[completed_wave]["upgrade"] = {
+		"id": str(upgrade_id),
+		"stack": stack_count,
+		"selected_at": snappedf(elapsed, 0.01),
 	}
 
 

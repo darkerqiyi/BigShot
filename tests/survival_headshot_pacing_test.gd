@@ -5,6 +5,7 @@ const ProjectileScene := preload("res://scenes/combat/projectile.tscn")
 const WeaponData := preload("res://scripts/weapons/weapon_catalog.gd")
 const WaveData := preload("res://scripts/survival/survival_wave_data.gd")
 const Tuning := preload("res://scripts/config/game_tuning.gd")
+const EnemyBalance := preload("res://scripts/config/enemy_balance.gd")
 
 var failures: Array[String] = []
 
@@ -27,7 +28,7 @@ func _run() -> void:
 	var body_details := await _fire_test_projectile(game, body_enemy, body_enemy.global_position + Vector2(0, 10), &"rifle", 24)
 	_expect(int(body_details.get("final_damage", 0)) == 24, "rifle body hit did not apply/display 24")
 	_expect(StringName(body_details.get("hit_zone", &"")) == &"body" and not bool(body_details.get("headshot", true)), "body hit was mislabeled as a headshot")
-	_expect(body_enemy.health == 168, "survival assault body health result was incorrect")
+	_expect(body_enemy.health == 108, "survival assault body health result was incorrect")
 	body_enemy.free()
 
 	var head_enemy: Node = game._spawn_enemy("assault", Vector2(930, 552), 0.0, false, false)
@@ -36,7 +37,7 @@ func _run() -> void:
 	var head_details := await _fire_test_projectile(game, head_enemy, head_enemy.head_hurtbox.global_position, &"rifle", 24)
 	_expect(int(head_details.get("final_damage", 0)) == 48, "rifle headshot did not apply/display 48")
 	_expect(StringName(head_details.get("hit_zone", &"")) == &"head" and bool(head_details.get("headshot", false)), "head hit was not marked critical")
-	_expect(head_enemy.health == 144, "head and body hurtboxes resolved duplicate damage")
+	_expect(head_enemy.health == 84, "head and body hurtboxes resolved duplicate damage")
 	head_enemy.global_position = Vector2(420, 552)
 
 	var shield: Node = game._spawn_enemy("shield", Vector2(1040, 552), 0.0, false, false)
@@ -93,17 +94,19 @@ func _run() -> void:
 	_expect(int(game.damage_numbers.get_debug_snapshot()["visible"]) == 0, "damage numbers did not return to the pool")
 
 	var rifle: Dictionary = WeaponData.get_weapon(&"rifle")
-	var health_values := {"assault": 192, "gunner": 216, "shield": 288, "elite": 1200}
+	var health_values := {"assault": 132, "gunner": 120, "shield": 216, "elite": 900}
 	var shot_counts := {}
 	for kind in health_values:
 		shot_counts[kind] = {
 			"body": _shots_to_kill(int(health_values[kind]), int(rifle["damage"]), false),
 			"head": _shots_to_kill(int(health_values[kind]), int(rifle["damage"]), true),
 		}
-	_expect(shot_counts["assault"] == {"body": 8, "head": 4}, "assault rifle TTK target changed")
-	_expect(shot_counts["gunner"] == {"body": 9, "head": 5}, "gunner rifle TTK target changed")
-	_expect(shot_counts["shield"] == {"body": 12, "head": 6}, "shield open-state rifle TTK target changed")
-	_expect(int(shot_counts["elite"]["body"]) == 46, "elite sustained rifle target changed")
+	_expect(shot_counts["assault"] == {"body": 6, "head": 3}, "assault rifle TTK target changed")
+	_expect(shot_counts["gunner"] == {"body": 5, "head": 3}, "gunner rifle TTK target changed")
+	_expect(shot_counts["shield"] == {"body": 9, "head": 5}, "shield open-state rifle TTK target changed")
+	_expect(int(shot_counts["elite"]["body"]) == 35, "elite sustained rifle target changed")
+	_expect(EnemyBalance.health_for("assault", &"survival", 9) == 196, "late assault health did not use linear growth")
+	_expect(EnemyBalance.health_for("gunner", &"survival", 9) == 168, "late gunner health did not use linear growth")
 
 	var waves := WaveData.full_waves()
 	var counts: Array[int] = []
@@ -112,8 +115,8 @@ func _run() -> void:
 		for entry in wave["entries"]:
 			count += int(entry["count"])
 		counts.append(count)
-	_expect(counts == [5, 9, 9, 12, 8, 15, 14, 18, 14, 0], "survival wave counts did not match the tuned curve")
-	_expect(float(waves[4]["rest_duration_after"]) == 6.0 and float(waves[8]["rest_duration_after"]) == 6.0, "major supply rests were not preserved")
+	_expect(counts == [6, 8, 9, 10, 15, 13, 15, 18, 24, 0], "survival wave counts did not match the tuned curve")
+	_expect(float(waves[4]["rest_duration_after"]) == 4.5 and float(waves[8]["rest_duration_after"]) == 5.0, "major supply rests were not preserved")
 	_expect(float(waves[0]["rest_duration_after"]) == 3.5 and int(waves[7]["active_limit"]) == 7, "normal rest or pressure cap was incorrect")
 
 	print("SURVIVAL_HEADSHOT_PACING_METRICS health=%s rifle_shots=%s wave_counts=%s pool=%s" % [JSON.stringify(health_values), JSON.stringify(shot_counts), JSON.stringify(counts), JSON.stringify(game.damage_numbers.get_debug_snapshot())])

@@ -17,6 +17,7 @@ const EnemyBalanceData := preload("res://scripts/config/enemy_balance.gd")
 
 @export_enum("assault", "gunner", "shield", "elite", "rifle", "runner", "heavy") var kind := "gunner"
 var balance_mode: StringName = &"pve"
+var balance_wave := 0
 var target: CharacterBody2D
 var active := true
 var activation_x := 0.0
@@ -82,7 +83,7 @@ func _apply_kind() -> void:
 			scale = Vector2(1.28, 1.28)
 		_:
 			move_speed = 82.0
-	max_health = EnemyBalanceData.health_for(kind, balance_mode)
+	max_health = EnemyBalanceData.health_for(kind, balance_mode, balance_wave)
 	var head_rectangle := head_shape.shape.duplicate() as RectangleShape2D
 	if head_rectangle != null:
 		head_rectangle.size = EnemyBalanceData.head_size_for(kind)

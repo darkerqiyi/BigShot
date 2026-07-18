@@ -39,11 +39,12 @@ func open(candidate_data: Array[Dictionary]) -> void:
 		button.disabled = index >= candidates.size()
 		if index < candidates.size():
 			var card: Dictionary = candidates[index]
-			button.text = "%d   [%s]\n%s\n\n%s\n\nSTACK %d / %d" % [
+			button.text = "%d   [%s]\n%s\n\n%s\n\n%s\nSTACK %d / %d" % [
 				index + 1,
 				str(card["icon"]).to_upper(),
 				str(card["display_name"]),
 				str(card["description"]),
+				str(card.get("value_preview", "")),
 				int(card["current_stacks"]),
 				int(card["max_stacks"]),
 			]

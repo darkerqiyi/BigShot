@@ -36,7 +36,7 @@ var grenade_damage_by_target: Dictionary = {}
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	for weapon_id in [&"rifle", &"shotgun", &"sniper", &"pistol"]:
-		weapon_stats[weapon_id] = {"shots": 0, "projectiles": 0, "hits": 0, "damage": 0, "kills": 0, "active_seconds": 0.0}
+		weapon_stats[weapon_id] = {"shots": 0, "projectiles": 0, "hits": 0, "headshots": 0, "damage": 0, "kills": 0, "active_seconds": 0.0}
 
 
 func _process(delta: float) -> void:
@@ -107,11 +107,13 @@ func record_shot(weapon_id: StringName, projectile_count: int = 1) -> void:
 	stats["projectiles"] = int(stats["projectiles"]) + maxi(projectile_count, 1)
 
 
-func record_hit(weapon_id: StringName, applied_damage: int, feedback: StringName) -> void:
+func record_hit(weapon_id: StringName, applied_damage: int, feedback: StringName, headshot: bool = false) -> void:
 	if weapon_id == &"" or applied_damage <= 0:
 		return
 	var stats := _weapon_entry(weapon_id)
 	stats["hits"] = int(stats["hits"]) + 1
+	if headshot:
+		stats["headshots"] = int(stats["headshots"]) + 1
 	stats["damage"] = int(stats["damage"]) + applied_damage
 	if feedback == &"kill":
 		stats["kills"] = int(stats["kills"]) + 1
@@ -227,5 +229,5 @@ func print_summary(reason: StringName) -> void:
 
 func _weapon_entry(weapon_id: StringName) -> Dictionary:
 	if not weapon_stats.has(weapon_id):
-		weapon_stats[weapon_id] = {"shots": 0, "projectiles": 0, "hits": 0, "damage": 0, "kills": 0, "active_seconds": 0.0}
+		weapon_stats[weapon_id] = {"shots": 0, "projectiles": 0, "hits": 0, "headshots": 0, "damage": 0, "kills": 0, "active_seconds": 0.0}
 	return weapon_stats[weapon_id]
