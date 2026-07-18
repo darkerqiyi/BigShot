@@ -34,7 +34,7 @@ func show_result(target: Node, world_position: Vector2, result: Dictionary) -> b
 		text = "IMMUNE"
 	elif headshot:
 		style = &"headshot"
-		text = "%d\nHEAD" % final_damage
+		text = str(final_damage)
 	var target_id := target.get_instance_id()
 	var requested_priority := 3 if style == &"headshot" else (2 if style == &"block" else (1 if style == &"immune" else 0))
 	var target_numbers := _numbers_for_target(target_id)

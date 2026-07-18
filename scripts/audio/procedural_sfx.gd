@@ -38,15 +38,18 @@ const LEGACY_ALIASES := {
 
 # Every value affecting mix density lives here. Gameplay scripts only request semantic cues.
 const CUE_PROFILES := {
-	&"rifle": {"bus": &"Weapons", "volume": -7.5, "cooldown": 0.036, "max": 3, "priority": 1, "pitch": 0.035, "synth": [132.0, 0.060, 0.48, 0.66, 2.03]},
-	&"rifle_accent": {"bus": &"Weapons", "volume": -6.2, "cooldown": 0.055, "max": 2, "priority": 2, "pitch": 0.018, "synth": [96.0, 0.088, 0.60, 0.82, 1.54]},
-	&"shotgun": {"bus": &"Weapons", "volume": -4.8, "cooldown": 0.110, "max": 2, "priority": 3, "pitch": 0.012, "synth": [70.0, 0.155, 0.76, -0.38, 1.41]},
-	&"sniper": {"bus": &"Weapons", "volume": -4.4, "cooldown": 0.160, "max": 2, "priority": 3, "pitch": 0.008, "synth": [168.0, 0.180, 0.30, 0.96, 2.67]},
-	&"pistol": {"bus": &"Weapons", "volume": -7.0, "cooldown": 0.060, "max": 2, "priority": 2, "pitch": 0.025, "synth": [252.0, 0.072, 0.34, 0.50, 2.12]},
-	&"rifle_mechanic": {"bus": &"Weapons", "volume": -14.0, "cooldown": 0.070, "max": 1, "priority": 0, "pitch": 0.04, "synth": [980.0, 0.030, 0.12, -0.24, 1.35]},
-	&"shotgun_pump": {"bus": &"Weapons", "volume": -8.2, "cooldown": 0.280, "max": 1, "priority": 1, "pitch": 0.02, "synth": [190.0, 0.120, 0.34, 0.52, 1.67]},
-	&"sniper_bolt": {"bus": &"Weapons", "volume": -8.0, "cooldown": 0.320, "max": 1, "priority": 1, "pitch": 0.015, "synth": [460.0, 0.105, 0.18, -0.38, 1.41]},
-	&"pistol_slide": {"bus": &"Weapons", "volume": -13.0, "cooldown": 0.080, "max": 1, "priority": 0, "pitch": 0.035, "synth": [760.0, 0.035, 0.10, -0.16, 1.58]},
+	&"rifle": {"bus": &"Weapons", "volume": -7.0, "cooldown": 0.036, "max": 3, "priority": 1, "pitch": 0.016, "synth": [112.0, 0.070, 0.38, 0.48, 1.68], "shape": [2.90, 0.18, 0.20]},
+	&"rifle_accent": {"bus": &"Weapons", "volume": -6.0, "cooldown": 0.055, "max": 2, "priority": 2, "pitch": 0.012, "synth": [88.0, 0.092, 0.52, 0.70, 1.46], "shape": [2.45, 0.28, 0.18]},
+	&"shotgun": {"bus": &"Weapons", "volume": -4.7, "cooldown": 0.110, "max": 2, "priority": 3, "pitch": 0.005, "synth": [58.0, 0.225, 0.62, -0.48, 1.28], "shape": [1.42, 0.76, 0.14]},
+	&"shotgun_air": {"bus": &"Weapons", "volume": -10.0, "cooldown": 0.110, "max": 1, "priority": 2, "pitch": 0.004, "synth": [286.0, 0.090, 0.66, 0.72, 2.05], "shape": [1.90, 0.08, 0.24]},
+	&"sniper": {"bus": &"Weapons", "volume": -4.0, "cooldown": 0.160, "max": 2, "priority": 3, "pitch": 0.003, "synth": [172.0, 0.270, 0.30, 1.20, 2.92], "shape": [1.32, 0.34, 0.34]},
+	&"sniper_crack": {"bus": &"Weapons", "volume": -8.5, "cooldown": 0.160, "max": 1, "priority": 3, "pitch": 0.002, "synth": [930.0, 0.058, 0.12, 1.12, 3.10], "shape": [2.45, 0.01, 0.52]},
+	&"sniper_tail": {"bus": &"Weapons", "volume": -10.5, "cooldown": 0.160, "max": 1, "priority": 1, "pitch": 0.0, "synth": [108.0, 0.340, 0.54, -0.22, 1.40], "shape": [1.04, 0.30, 0.04]},
+	&"pistol": {"bus": &"Weapons", "volume": -8.0, "cooldown": 0.060, "max": 2, "priority": 2, "pitch": 0.014, "synth": [158.0, 0.065, 0.28, 0.34, 1.86], "shape": [2.85, 0.22, 0.11]},
+	&"rifle_mechanic": {"bus": &"Weapons", "volume": -13.2, "cooldown": 0.055, "max": 1, "priority": 0, "pitch": 0.018, "synth": [840.0, 0.032, 0.16, -0.30, 1.35]},
+	&"shotgun_pump": {"bus": &"Weapons", "volume": -8.1, "cooldown": 0.280, "max": 1, "priority": 1, "pitch": 0.005, "synth": [164.0, 0.135, 0.34, 0.48, 1.60]},
+	&"sniper_bolt": {"bus": &"Weapons", "volume": -7.8, "cooldown": 0.320, "max": 1, "priority": 1, "pitch": 0.003, "synth": [540.0, 0.125, 0.15, -0.44, 1.38]},
+	&"pistol_slide": {"bus": &"Weapons", "volume": -12.0, "cooldown": 0.080, "max": 1, "priority": 0, "pitch": 0.016, "synth": [620.0, 0.035, 0.10, -0.18, 1.52]},
 	&"weapon_switch": {"bus": &"UI", "volume": -11.0, "cooldown": 0.055, "max": 1, "priority": 1, "pitch": 0.0, "synth": [720.0, 0.040, 0.06, 0.20, 1.50]},
 	&"reload": {"bus": &"Player", "volume": -9.0, "cooldown": 0.100, "max": 1, "priority": 1, "pitch": 0.015, "synth": [430.0, 0.082, 0.14, 0.18, 1.68]},
 	&"rifle_reload": {"bus": &"Weapons", "volume": -9.0, "cooldown": 0.200, "max": 1, "priority": 1, "pitch": 0.01, "synth": [390.0, 0.085, 0.14, -0.12, 1.72]},
@@ -418,8 +421,10 @@ func _build_music_players() -> void:
 
 func _build_streams() -> void:
 	for cue in CUE_PROFILES:
-		var synth: Array = CUE_PROFILES[cue]["synth"]
-		_streams[cue] = _make_stream(float(synth[0]), float(synth[1]), float(synth[2]), float(synth[3]), float(synth[4]))
+		var profile: Dictionary = CUE_PROFILES[cue]
+		var synth: Array = profile["synth"]
+		var shape: Array = profile.get("shape", [2.15, 0.0, 0.0])
+		_streams[cue] = _make_stream(float(synth[0]), float(synth[1]), float(synth[2]), float(synth[3]), float(synth[4]), shape)
 	_music_streams[&"level"] = _make_music_stream(false)
 	_music_streams[&"boss"] = _make_music_stream(true)
 
@@ -448,22 +453,32 @@ func _ensure_audio_buses() -> void:
 		AudioServer.add_bus_effect(master_index, limiter)
 
 
-func _make_stream(base_frequency: float, duration: float, noise_mix: float, chirp: float, overtone: float) -> AudioStreamWAV:
+func _make_stream(base_frequency: float, duration: float, noise_mix: float, chirp: float, overtone: float, shape: Array = [2.15, 0.0, 0.0]) -> AudioStreamWAV:
 	var frame_count := maxi(int(float(SAMPLE_RATE) * duration), 1)
 	var bytes := PackedByteArray()
 	bytes.resize(frame_count * 2)
+	var tail_power := float(shape[0])
+	var thump_mix := float(shape[1])
+	var crack_mix := float(shape[2])
 	for frame in range(frame_count):
 		var time := float(frame) / float(SAMPLE_RATE)
 		var progress := float(frame) / float(frame_count)
 		var attack := minf(progress / 0.035, 1.0)
-		var envelope := attack * pow(1.0 - progress, 2.15)
+		var envelope := attack * pow(1.0 - progress, tail_power)
 		var frequency := base_frequency * (1.0 + chirp * (1.0 - progress))
 		var fundamental := sin(TAU * frequency * time)
 		var harmonic := sin(TAU * frequency * overtone * time + 0.35) * 0.34
 		var noise := sin(float(frame) * 78.233) * 0.50 + sin(float(frame) * 19.731) * 0.31 + sin(float(frame) * 5.117) * 0.19
 		var tonal := fundamental * 0.72 + harmonic
-		var sample := (tonal * (1.0 - noise_mix) + noise * noise_mix) * envelope * 0.68
-		bytes.encode_s16(frame * 2, int(clampf(sample, -1.0, 1.0) * 32767.0))
+		var core := (tonal * (1.0 - noise_mix) + noise * noise_mix) * envelope
+		var transient_envelope := attack * pow(1.0 - progress, 8.0)
+		var thump_frequency := maxf(55.0, base_frequency * 0.72)
+		var thump := sin(TAU * thump_frequency * time + 0.12) * thump_mix
+		var crack_frequency := base_frequency * (4.2 + overtone)
+		var crack := (1.0 if sin(TAU * crack_frequency * time) >= 0.0 else -1.0) * crack_mix
+		var transient := (thump + crack) * transient_envelope * 0.45
+		var sample := (core + transient) * 0.68
+		bytes.encode_s16(frame * 2, int(clampf(sample, -0.78, 0.78) * 32767.0))
 	return _make_wav(bytes, SAMPLE_RATE, false)
 
 

@@ -66,7 +66,18 @@ func _run() -> void:
 	_expect(game.damage_numbers._active.size() == 1 and game.damage_numbers._active[0]._label.text == "18", "an applied 18-damage result did not display 18")
 	game.damage_numbers.clear_all()
 	game.damage_numbers.show_result(head_enemy, head_enemy.global_position + Vector2(0, -30), {"final_damage": 36, "headshot": true, "blocked": false})
-	_expect(game.damage_numbers._active.size() == 1 and game.damage_numbers._active[0]._label.text.begins_with("36") and game.damage_numbers._active[0]._label.text.contains("HEAD"), "an applied 36-damage headshot result did not display 36 with the headshot marker")
+	var headshot_number: DamageNumber = game.damage_numbers._active[0] if game.damage_numbers._active.size() == 1 else null
+	_expect(headshot_number != null and headshot_number._label.text == "36", "an applied 36-damage headshot did not display only its final damage")
+	if headshot_number != null:
+		_expect(not headshot_number._label.text.contains("HEAD") and not headshot_number._label.text.contains("CRIT"), "headshot damage retained a redundant text marker")
+		_expect(headshot_number._label.get_theme_font_size("font_size") == 22, "headshot number lost its compact size emphasis")
+		_expect(headshot_number._label.get_theme_color("font_color").is_equal_approx(Color("ffd34e")), "headshot number lost its gold identity")
+		_expect(headshot_number._label.get_theme_color("font_outline_color").is_equal_approx(Color("963b2b")), "headshot number lost its dark orange outline")
+		_expect(is_equal_approx(headshot_number.scale.x, DamageNumber.HEADSHOT_TARGET_SCALE * DamageNumber.HEADSHOT_POP_IN_SCALE), "headshot pop did not begin at 0.8 of its target scale")
+		headshot_number._process(DamageNumber.HEADSHOT_POP_TIME)
+		_expect(headshot_number.scale.x >= DamageNumber.HEADSHOT_TARGET_SCALE * 1.14, "headshot pop did not reach its short 1.15 overshoot")
+		headshot_number._process(DamageNumber.HEADSHOT_SETTLE_TIME)
+		_expect(absf(headshot_number.scale.x - DamageNumber.HEADSHOT_TARGET_SCALE) < 0.01, "headshot pop did not settle to its target scale")
 	game.damage_numbers.clear_all()
 	for index in range(20):
 		game.damage_numbers.show_result(head_enemy, head_enemy.global_position + Vector2(0, -30), {"final_damage": 24, "headshot": false, "blocked": false})

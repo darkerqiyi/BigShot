@@ -3,6 +3,12 @@ class_name DamageNumber
 
 signal finished(number: DamageNumber)
 
+const HEADSHOT_TARGET_SCALE := 1.08
+const HEADSHOT_POP_IN_SCALE := 0.80
+const HEADSHOT_POP_PEAK_SCALE := 1.15
+const HEADSHOT_POP_TIME := 0.075
+const HEADSHOT_SETTLE_TIME := 0.185
+
 var target_id := 0
 var priority := 0
 var serial := 0
@@ -39,12 +45,12 @@ func start(world_position: Vector2, text: String, style: StringName, next_target
 	match style:
 		&"headshot":
 			priority = 3
-			duration = 0.72
-			rise_distance = 60.0
-			scale = Vector2.ONE * 1.42
+			duration = 0.68
+			rise_distance = 56.0
+			scale = Vector2.ONE * HEADSHOT_TARGET_SCALE * HEADSHOT_POP_IN_SCALE
 			_label.add_theme_font_size_override("font_size", 22)
-			_label.add_theme_color_override("font_color", Color("ffd35a"))
-			_label.add_theme_color_override("font_outline_color", Color("7a2d35"))
+			_label.add_theme_color_override("font_color", Color("ffd34e"))
+			_label.add_theme_color_override("font_outline_color", Color("963b2b"))
 		&"block":
 			priority = 2
 			duration = 0.62
@@ -89,8 +95,14 @@ func _process(delta: float) -> void:
 	var progress := clampf(elapsed / maxf(duration, 0.01), 0.0, 1.0)
 	global_position = _origin + Vector2(0.0, -rise_distance * ease(progress, 0.72))
 	if priority == 3:
-		var bounce := 1.0 + maxf(0.0, 1.0 - progress / 0.20) * 0.28
-		scale = Vector2.ONE * 1.42 * bounce
+		var pop_scale := 1.0
+		if elapsed < HEADSHOT_POP_TIME:
+			var pop_progress := smoothstep(0.0, 1.0, elapsed / HEADSHOT_POP_TIME)
+			pop_scale = lerpf(HEADSHOT_POP_IN_SCALE, HEADSHOT_POP_PEAK_SCALE, pop_progress)
+		elif elapsed < HEADSHOT_SETTLE_TIME:
+			var settle_progress := smoothstep(0.0, 1.0, (elapsed - HEADSHOT_POP_TIME) / (HEADSHOT_SETTLE_TIME - HEADSHOT_POP_TIME))
+			pop_scale = lerpf(HEADSHOT_POP_PEAK_SCALE, 1.0, settle_progress)
+		scale = Vector2.ONE * HEADSHOT_TARGET_SCALE * pop_scale
 	_label.modulate.a = 1.0 if progress < 0.62 else 1.0 - (progress - 0.62) / 0.38
 	if progress >= 1.0:
 		recycle()

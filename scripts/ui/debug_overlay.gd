@@ -24,6 +24,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event.is_action_pressed("debug_toggle"):
 		visible = not visible
+		if player != null and player.has_method("set_aim_debug_enabled"):
+			player.set_aim_debug_enabled(visible)
 		get_viewport().set_input_as_handled()
 
 
@@ -79,6 +81,10 @@ func _update_readout() -> void:
 		"exhausted": false,
 		"current_move_speed": 0.0,
 		"sprint_block_reason": &"unknown",
+		"aim_target_world": Vector2.ZERO,
+		"last_shot_origin": Vector2.ZERO,
+		"last_shot_direction": Vector2.RIGHT,
+		"aim_debug_enabled": false,
 	}
 	if player != null and player.has_method("get_debug_snapshot"):
 		player_snapshot = player.get_debug_snapshot()
@@ -147,6 +153,16 @@ func _update_readout() -> void:
 		float(player_snapshot["current_move_speed"]),
 		"yes" if player_snapshot["grounded"] else "no",
 		str(player_snapshot["sprint_block_reason"]),
+	]
+	var shot_origin: Vector2 = player_snapshot["last_shot_origin"]
+	var shot_direction: Vector2 = player_snapshot["last_shot_direction"]
+	readout.text += "\n\nAIM RAY: %s\nMuzzle: (%.1f, %.1f)  Target: %s\nShot dir: (%.4f, %.4f)" % [
+		"DRAW" if bool(player_snapshot["aim_debug_enabled"]) else "hidden",
+		shot_origin.x,
+		shot_origin.y,
+		str(player_snapshot["aim_target_world"]),
+		shot_direction.x,
+		shot_direction.y,
 	]
 	var telemetry := get_node_or_null("../RunTelemetry")
 	if telemetry != null and telemetry.has_method("get_snapshot"):
