@@ -1,6 +1,7 @@
 extends SceneTree
 
 const MainScene := preload("res://scenes/main/main.tscn")
+const WeaponData := preload("res://scripts/weapons/weapon_catalog.gd")
 
 var failures: Array[String] = []
 
@@ -24,6 +25,7 @@ func _run() -> void:
 	await _test_pause_mix_controls(game, audio)
 	await _test_semantic_duck(audio)
 	await _test_event_wiring(game, audio)
+	await _test_weapon_event_wiring(game, audio)
 	_test_boss_music_transition(game, audio)
 	game.queue_free()
 	await process_frame
@@ -47,7 +49,7 @@ func _test_bus_layout(audio: Node) -> void:
 func _test_cue_catalog(audio: Node) -> void:
 	for cue in [
 		&"rifle", &"shotgun", &"sniper", &"pistol", &"impact_normal", &"impact_heavy",
-		&"rifle_mechanic", &"shotgun_pump", &"sniper_bolt", &"pistol_slide",
+		&"rifle_mechanic", &"shotgun_air", &"shotgun_pump", &"sniper_crack", &"sniper_tail", &"sniper_bolt", &"pistol_slide",
 		&"rifle_reload", &"shotgun_reload", &"sniper_reload", &"pistol_reload", &"mag_insert", &"reload_complete", &"empty_click",
 		&"shield_block", &"guard_break", &"enemy_warning", &"elite_warning", &"enemy_hurt", &"enemy_hurt_heavy",
 		&"assault_swing", &"shield_bash", &"elite_attack", &"elite_step", &"player_hurt",
@@ -64,13 +66,37 @@ func _test_cue_catalog(audio: Node) -> void:
 	var sniper: Dictionary = audio.get_cue_profile(&"sniper")
 	var pistol: Dictionary = audio.get_cue_profile(&"pistol")
 	_expect(rifle["bus"] == &"Weapons" and shotgun["bus"] == &"Weapons" and sniper["bus"] == &"Weapons" and pistol["bus"] == &"Weapons", "weapon cues escaped the Weapons bus")
-	_expect(float(shotgun["synth"][1]) > float(rifle["synth"][1]) and float(sniper["synth"][1]) > float(pistol["synth"][1]), "four weapons do not retain distinct transient lengths")
-	_expect(float(shotgun["volume"]) > float(rifle["volume"]) and float(sniper["volume"]) > float(pistol["volume"]), "heavy weapons are not prioritized over sustained/light fire")
+	_expect(float(sniper["synth"][1]) > float(shotgun["synth"][1]) and float(shotgun["synth"][1]) > float(rifle["synth"][1]) and float(rifle["synth"][1]) > float(pistol["synth"][1]), "weapon tail lengths no longer read sniper > shotgun > rifle > pistol")
+	_expect(float(sniper["volume"]) >= float(shotgun["volume"]) and float(shotgun["volume"]) > float(rifle["volume"]) and float(rifle["volume"]) > float(pistol["volume"]), "weapon loudness hierarchy no longer reads sniper >= shotgun > rifle > pistol")
+	_expect(float(shotgun["shape"][1]) > float(sniper["shape"][1]) and float(sniper["shape"][2]) > float(rifle["shape"][2]), "shotgun low thump or sniper crack layer lost its identity")
+	_expect(float(rifle["pitch"]) <= 0.02 and float(pistol["pitch"]) <= 0.02 and float(shotgun["pitch"]) < float(rifle["pitch"]) and float(sniper["pitch"]) < float(pistol["pitch"]), "weapon pitch variation exceeds its subtle identity-safe range")
 	_expect(audio.get_cue_profile(&"boss_warning_charge")["bus"] == &"Boss" and audio.get_cue_profile(&"enemy_warning")["bus"] == &"Enemies", "Boss and enemy warnings are not independently mixable")
 	_expect(audio.get_cue_profile(&"grenade_explosion")["bus"] == &"Weapons" and audio.get_cue_profile(&"grenade_empty")["bus"] == &"UI", "grenade combat and empty cues escaped their intended buses")
 	for cue in [&"rifle", &"shotgun", &"sniper", &"pistol", &"impact_heavy", &"boss_death"]:
 		var peak := _stream_peak(audio._streams[cue] as AudioStreamWAV)
 		_expect(peak > 0.04 and peak <= 0.80, "%s source peak is silent or clipping: %.3f" % [cue, peak])
+	var weapon_rms := {}
+	var weapon_metrics := {}
+	for cue in [&"rifle", &"shotgun", &"sniper", &"pistol"]:
+		var stream := audio._streams[cue] as AudioStreamWAV
+		var profile: Dictionary = audio.get_cue_profile(cue)
+		weapon_rms[cue] = _stream_rms(stream)
+		weapon_metrics[String(cue)] = {
+			"duration_ms": int(round(float(stream.data.size() / 2) / float(stream.mix_rate) * 1000.0)),
+			"peak": snappedf(_stream_peak(stream), 0.001),
+			"rms": snappedf(float(weapon_rms[cue]), 0.001),
+			"volume_db": profile["volume"],
+			"pitch_percent": float(profile["pitch"]) * 100.0,
+		}
+	_expect(float(weapon_rms[&"shotgun"]) > float(weapon_rms[&"pistol"]) and float(weapon_rms[&"sniper"]) > float(weapon_rms[&"rifle"]), "heavy weapon source bodies are not measurably stronger than the light signatures")
+	var shotgun_layers: Dictionary = _layered_metrics(audio, [[&"shotgun", 0.0], [&"shotgun_air", 0.0], [&"shotgun_pump", 0.095]])
+	var sniper_layers: Dictionary = _layered_metrics(audio, [[&"sniper", 0.0], [&"sniper_crack", 0.0], [&"sniper_tail", 0.018], [&"sniper_bolt", 0.105]])
+	_expect(float(shotgun_layers["peak"]) < 1.0 and float(sniper_layers["peak"]) < 1.0, "layered heavy-weapon mix clips before the Master limiter")
+	_expect(float(sniper_layers["energy"]) > float(shotgun_layers["energy"]), "sniper layered signature is not perceptually stronger than the shotgun signature")
+	_expect(float(audio.get_cue_profile(&"shotgun_air")["synth"][0]) > float(shotgun["synth"][0]) * 3.0, "shotgun air blast is not spectrally separated from its low body")
+	_expect(float(audio.get_cue_profile(&"sniper_crack")["synth"][0]) > float(sniper["synth"][0]) * 4.0, "sniper sonic crack is not spectrally separated from its body")
+	print("AUDIO_WEAPON_SIGNATURE_METRICS %s" % JSON.stringify(weapon_metrics))
+	print("AUDIO_WEAPON_LAYER_METRICS %s" % JSON.stringify({"shotgun": shotgun_layers, "sniper": sniper_layers}))
 
 
 func _test_music_flow(audio: Node) -> void:
@@ -148,6 +174,25 @@ func _test_event_wiring(game: Node, audio: Node) -> void:
 	_expect(audio.get_play_count(&"ui_hover") == hover_before + 1, "pause UI hover selection is not wired")
 
 
+func _test_weapon_event_wiring(game: Node, audio: Node) -> void:
+	var before := {}
+	for cue in [&"rifle", &"shotgun", &"sniper", &"pistol", &"rifle_mechanic", &"shotgun_air", &"shotgun_pump", &"sniper_crack", &"sniper_tail", &"sniper_bolt", &"pistol_slide"]:
+		before[cue] = audio.get_play_count(cue)
+	game.player.weapon_inventory.shot_sequence = 2
+	for weapon_id in WeaponData.ORDER:
+		var data: Dictionary = WeaponData.get_weapon(weapon_id)
+		var directions: Array[Vector2] = []
+		for _projectile in range(int(data["projectile_count"])):
+			directions.append(Vector2.RIGHT)
+		game._spawn_player_volley(game.player.global_position + Vector2(24.0, -12.0), directions, &"player", data, int(data["damage"]))
+		await process_frame
+	await create_timer(0.40, true, false, true).timeout
+	for weapon_id in WeaponData.ORDER:
+		_expect(audio.get_play_count(weapon_id) == int(before[weapon_id]) + 1, "%s fire event did not trigger exactly one weapon cue" % weapon_id)
+	for cue in [&"rifle_mechanic", &"shotgun_air", &"shotgun_pump", &"sniper_crack", &"sniper_tail", &"sniper_bolt", &"pistol_slide"]:
+		_expect(audio.get_play_count(cue) == int(before[cue]) + 1, "%s mechanical layer did not stay synchronized with its weapon event" % cue)
+
+
 func _test_boss_music_transition(game: Node, audio: Node) -> void:
 	game._debug_unlock_boss_for_tests()
 	game.player.global_position.x = 17850.0
@@ -166,6 +211,43 @@ func _stream_peak(stream: AudioStreamWAV) -> float:
 	for index in range(0, stream.data.size(), 2):
 		peak = maxf(peak, absf(float(stream.data.decode_s16(index)) / 32767.0))
 	return peak
+
+
+func _stream_rms(stream: AudioStreamWAV) -> float:
+	var sum_squares := 0.0
+	var sample_count := 0
+	for index in range(0, stream.data.size(), 2):
+		var sample := float(stream.data.decode_s16(index)) / 32767.0
+		sum_squares += sample * sample
+		sample_count += 1
+	return sqrt(sum_squares / maxf(float(sample_count), 1.0))
+
+
+func _layered_metrics(audio: Node, layers: Array) -> Dictionary:
+	var total_frames := 1
+	for layer: Array in layers:
+		var stream := audio._streams[layer[0]] as AudioStreamWAV
+		var delay_frames := int(round(float(layer[1]) * float(stream.mix_rate)))
+		total_frames = maxi(total_frames, delay_frames + stream.data.size() / 2)
+	var mixed := PackedFloat32Array()
+	mixed.resize(total_frames)
+	for layer: Array in layers:
+		var cue: StringName = layer[0]
+		var stream := audio._streams[cue] as AudioStreamWAV
+		var gain := db_to_linear(float(audio.get_cue_profile(cue)["volume"]))
+		var delay_frames := int(round(float(layer[1]) * float(stream.mix_rate)))
+		for sample_index in range(stream.data.size() / 2):
+			mixed[delay_frames + sample_index] += float(stream.data.decode_s16(sample_index * 2)) / 32767.0 * gain
+	var peak := 0.0
+	var sum_squares := 0.0
+	for sample: float in mixed:
+		peak = maxf(peak, absf(sample))
+		sum_squares += sample * sample
+	return {
+		"peak": snappedf(peak, 0.001),
+		"rms": snappedf(sqrt(sum_squares / maxf(float(mixed.size()), 1.0)), 0.001),
+		"energy": snappedf(sqrt(sum_squares), 0.001),
+	}
 
 
 func _finish() -> void:

@@ -35,6 +35,17 @@ if [[ -n "$filtered_errors" ]]; then
 fi
 grep "WEAPON_SYSTEM_PASS" "$LOG_DIR/weapons.log"
 
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/sniper_accuracy_test.gd >"$LOG_DIR/sniper_accuracy.log" 2>&1; then
+	cat "$LOG_DIR/sniper_accuracy.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/sniper_accuracy.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SNIPER_ACCURACY_PASS" "$LOG_DIR/sniper_accuracy.log"
+
 if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/enemy_boss_test.gd >"$LOG_DIR/enemy_boss.log" 2>&1; then
 	cat "$LOG_DIR/enemy_boss.log" >&2
 	exit 1

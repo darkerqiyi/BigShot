@@ -54,6 +54,10 @@ var jump_buffer_remaining := 0.0
 var coyote_remaining := 0.0
 var _invulnerability_remaining := 0.0
 var _using_mouse_aim := true
+var aim_target_world := Vector2.ZERO
+var last_shot_origin := Vector2.ZERO
+var last_shot_direction := Vector2.RIGHT
+var aim_debug_enabled := false
 var _run_time := 0.0
 var _landing_feedback_remaining := 0.0
 var _landing_intensity := 0.0
@@ -133,6 +137,7 @@ func _ready() -> void:
 	ammo_changed.emit(ammo, int(weapon_inventory.get_current_data()["magazine_size"]), false)
 	grenade_count_changed.emit(grenade_count, runtime_grenade_capacity)
 	stamina_bar.reset_full()
+	aim_target_world = global_position + aim_direction * 1000.0
 
 
 func _input(event: InputEvent) -> void:
@@ -582,13 +587,18 @@ func _update_aim() -> void:
 	var stick := Input.get_vector("aim_left", "aim_right", "aim_stick_up", "aim_stick_down")
 	if stick.length() > 0.25:
 		aim_direction = stick.normalized()
+		aim_target_world = global_position + aim_direction * 2000.0
 		_using_mouse_aim = false
 	elif _using_mouse_aim:
-		var mouse_delta := get_global_mouse_position() - global_position
+		aim_target_world = get_global_mouse_position()
+		var mouse_delta := aim_target_world - global_position
 		if mouse_delta.length() > 8.0:
 			aim_direction = mouse_delta.normalized()
 	elif not is_zero_approx(movement_intent):
 		aim_direction = Vector2(signf(movement_intent), 0.0)
+		aim_target_world = global_position + aim_direction * 2000.0
+	if aim_debug_enabled:
+		queue_redraw()
 
 
 func _handle_weapon(delta: float) -> void:
@@ -639,11 +649,16 @@ func _fire_current_weapon() -> void:
 	if current_weapon_id == &"rifle" and weapon_inventory.shot_sequence % Tuning.WEAPON_ACCENT_EVERY == 0:
 		shot_damage = Tuning.WEAPON_ACCENT_DAMAGE
 		data["impact_strength"] = Tuning.ACCENT_HIT_STRENGTH
-	var directions := _build_shot_directions(data)
 	var muzzle_position: Vector2 = visual.get_muzzle_global_position()
+	var locked_direction := _lock_shot_direction(data, muzzle_position)
+	var directions := _build_shot_directions(data, locked_direction)
+	last_shot_origin = muzzle_position
+	last_shot_direction = directions[0] if not directions.is_empty() else locked_direction
 	volley_requested.emit(muzzle_position, directions, &"player", data, shot_damage)
 	_play_muzzle_flash(data)
-	velocity.x -= aim_direction.x * float(data["recoil"])
+	velocity.x -= locked_direction.x * float(data["recoil"])
+	if aim_debug_enabled:
+		queue_redraw()
 	if current_weapon_id == &"rifle":
 		_rifle_bloom = minf(_rifle_bloom + 0.42, 3.2)
 	if ammo == 0:
@@ -651,21 +666,33 @@ func _fire_current_weapon() -> void:
 		_start_reload()
 
 
-func _build_shot_directions(data: Dictionary) -> Array[Vector2]:
+func _lock_shot_direction(data: Dictionary, muzzle_position: Vector2) -> Vector2:
+	if StringName(data["id"]) == &"sniper" and _using_mouse_aim:
+		var to_target := aim_target_world - muzzle_position
+		if to_target.length_squared() > 1.0:
+			return to_target.normalized()
+	return aim_direction.normalized() if aim_direction.length_squared() > 0.01 else Vector2(float(facing_direction), 0.0)
+
+
+func _build_shot_directions(data: Dictionary, base_direction: Vector2 = aim_direction) -> Array[Vector2]:
 	var count := int(data["projectile_count"])
 	var cone_degrees := float(data["spread_angle"])
+	var directions: Array[Vector2] = []
+	_last_pattern_degrees.clear()
+	if StringName(data["id"]) == &"sniper":
+		directions.append(base_direction.normalized())
+		_last_pattern_degrees.append(0.0)
+		return directions
 	if current_weapon_id == &"rifle":
 		cone_degrees += _rifle_bloom
 	if absf(velocity.x) > 55.0:
 		cone_degrees += float(data["movement_accuracy"])
 	if not is_on_floor():
 		cone_degrees += float(data["airborne_accuracy"])
-	var directions: Array[Vector2] = []
-	_last_pattern_degrees.clear()
 	if count <= 1:
 		var pattern := [-0.38, 0.24, -0.12, 0.34, 0.0]
 		var offset_degrees: float = cone_degrees * float(pattern[weapon_inventory.shot_sequence % pattern.size()])
-		directions.append(aim_direction.rotated(deg_to_rad(offset_degrees)).normalized())
+		directions.append(base_direction.rotated(deg_to_rad(offset_degrees)).normalized())
 		_last_pattern_degrees.append(offset_degrees)
 		return directions
 	for pellet_index in range(count):
@@ -673,7 +700,7 @@ func _build_shot_directions(data: Dictionary) -> Array[Vector2]:
 		var offset_degrees := lerpf(-cone_degrees * 0.5, cone_degrees * 0.5, ratio)
 		var micro_variation := sin(float(weapon_inventory.shot_sequence * 7 + pellet_index * 11)) * 0.35
 		offset_degrees += micro_variation
-		directions.append(aim_direction.rotated(deg_to_rad(offset_degrees)).normalized())
+		directions.append(base_direction.rotated(deg_to_rad(offset_degrees)).normalized())
 		_last_pattern_degrees.append(offset_degrees)
 	return directions
 
@@ -811,6 +838,10 @@ func get_debug_snapshot() -> Dictionary:
 		"visual_state": visual.animation_state,
 		"base_visual_state": visual.base_animation_state,
 		"muzzle_position": visual.get_muzzle_global_position(),
+		"aim_target_world": aim_target_world,
+		"last_shot_origin": last_shot_origin,
+		"last_shot_direction": last_shot_direction,
+		"aim_debug_enabled": aim_debug_enabled,
 		"last_pattern": _last_pattern_degrees.duplicate(),
 		"is_rolling": is_rolling,
 		"roll_direction": roll_direction,
@@ -848,3 +879,24 @@ func get_debug_snapshot() -> Dictionary:
 		"runtime_grenade_radius": runtime_grenade_radius,
 		"runtime_grenade_damage": runtime_grenade_damage,
 	}
+
+
+func set_aim_debug_enabled(enabled: bool) -> void:
+	aim_debug_enabled = enabled and OS.is_debug_build()
+	queue_redraw()
+
+
+func _draw() -> void:
+	if not aim_debug_enabled or current_weapon_id != &"sniper":
+		return
+	var muzzle_world: Vector2 = visual.get_muzzle_global_position()
+	var muzzle_local: Vector2 = to_local(muzzle_world)
+	var target_local: Vector2 = to_local(aim_target_world)
+	var planned_direction: Vector2 = _lock_shot_direction(weapon_inventory.get_current_data(), muzzle_world)
+	var planned_end: Vector2 = muzzle_local + planned_direction * minf(muzzle_world.distance_to(aim_target_world), 1800.0)
+	var actual_origin_local: Vector2 = to_local(last_shot_origin)
+	var actual_end: Vector2 = actual_origin_local + last_shot_direction * 360.0
+	draw_line(muzzle_local, planned_end, Color(0.32, 0.95, 1.0, 0.78), 1.0)
+	draw_line(actual_origin_local, actual_end, Color(1.0, 0.82, 0.30, 0.92), 2.0)
+	draw_circle(muzzle_local, 3.0, Color(0.35, 1.0, 0.72, 1.0))
+	draw_circle(target_local, 4.0, Color(1.0, 0.35, 0.32, 0.95), false, 1.0)

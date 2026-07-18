@@ -547,9 +547,12 @@ func _spawn_player_volley(origin: Vector2, directions: Array[Vector2], team: Str
 			if player.weapon_inventory.shot_sequence % 2 == 0:
 				sfx.play_cue(&"rifle_mechanic")
 		&"shotgun":
-			sfx.play_cue_delayed(&"shotgun_pump", 0.15)
+			sfx.play_cue(&"shotgun_air")
+			sfx.play_cue_delayed(&"shotgun_pump", 0.095)
 		&"sniper":
-			sfx.play_cue_delayed(&"sniper_bolt", 0.17)
+			sfx.play_cue(&"sniper_crack")
+			sfx.play_cue_delayed(&"sniper_tail", 0.018)
+			sfx.play_cue_delayed(&"sniper_bolt", 0.105)
 		&"pistol":
 			sfx.play_cue_delayed(&"pistol_slide", 0.045)
 
