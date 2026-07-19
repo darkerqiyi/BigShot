@@ -2,16 +2,14 @@ extends "res://scripts/game/main.gd"
 
 const SurvivalWaveManagerScript := preload("res://scripts/survival/wave_manager.gd")
 const SurvivalWaveData := preload("res://scripts/survival/survival_wave_data.gd")
+const SurvivalMapConfigScript := preload("res://scripts/survival/survival_map_config.gd")
 const SpawnWarningScript := preload("res://scripts/survival/spawn_warning.gd")
 const SurvivalArenaArtScript := preload("res://scripts/survival/survival_arena_art.gd")
+const SteamVentScript := preload("res://scripts/survival/steam_vent.gd")
 const SurvivalBalanceTelemetryScript := preload("res://scripts/debug/survival_balance_telemetry.gd")
 const RunUpgradeManagerScript := preload("res://scripts/survival/run_upgrade_manager.gd")
 const SurvivalUpgradeOverlayScript := preload("res://scripts/ui/survival_upgrade_overlay.gd")
 
-const ARENA_LEFT := 16.0
-const ARENA_RIGHT := 1264.0
-const ARENA_CENTER := 640.0
-const PLAYER_START := Vector2(640.0, 552.0)
 const SPAWN_PROTECTION_TIME := 0.48
 
 var wave_manager: SurvivalWaveManager
@@ -31,6 +29,10 @@ var upgrade_overlay: SurvivalUpgradeOverlay
 var upgrade_layer: CanvasLayer
 var best_score := 0
 var best_time := 0.0
+var map_id: StringName = SurvivalMapConfigScript.INDUSTRIAL_ID
+var map_config: Dictionary = {}
+var map_hazard_root: Node2D
+var map_hazards: Array[Node] = []
 var _spawn_positions: Dictionary = {}
 var _last_counter_snapshot := {
 	"wave": 0,
@@ -49,29 +51,33 @@ func _setup_mission() -> void:
 
 
 func _ready() -> void:
+	map_id = StringName(get_meta("survival_map_id", SurvivalMapConfigScript.INDUSTRIAL_ID))
+	map_config = SurvivalMapConfigScript.get_map(map_id)
 	enemy_balance_mode = &"survival"
 	super._ready()
 	run_state = "survival_countdown"
-	player.global_position = PLAYER_START
+	_prepare_survival_world()
+	player.global_position = map_config.get("player_spawn", Vector2(640.0, 552.0))
 	player.velocity = Vector2.ZERO
-	camera.level_width = 1280.0
-	camera.global_position = Vector2(ARENA_CENTER, camera.fixed_y)
-	boss.global_position = Vector2(1010.0, 520.0)
-	boss.arena_left = 110.0
-	boss.arena_right = 1170.0
-	boss.phase_two_summon_positions = PackedVector2Array([
-		Vector2(280.0, 552.0),
-		Vector2(1000.0, 552.0),
-	])
+	var camera_bounds: Rect2 = map_config.get("camera_bounds", Rect2(0.0, 0.0, 1280.0, 720.0))
+	camera.configure_bounds(camera_bounds)
+	boss.global_position = map_config.get("boss_spawn", Vector2(1010.0, 520.0))
+	var boss_arena: Vector2 = map_config.get("boss_arena", Vector2(110.0, 1170.0))
+	boss.arena_left = boss_arena.x
+	boss.arena_right = boss_arena.y
+	boss.phase_two_summon_positions = map_config.get("boss_summons", PackedVector2Array())
 	boss_gate.collision_layer = 0
 	boss_gate_visual.visible = false
 	_create_arena_boundaries()
 	_create_arena_art()
+	_create_map_platforms()
+	_create_map_hazards()
 	wave_manager = SurvivalWaveManagerScript.new()
 	wave_manager.name = "WaveManager"
 	add_child(wave_manager)
 	var waves := SurvivalWaveData.phase_a_waves() if bool(get_meta("survival_phase_a_test", false)) else SurvivalWaveData.full_waves()
-	wave_manager.configure(waves, 6)
+	waves = _adapt_waves_for_map(waves)
+	wave_manager.configure(waves, maxi(6 + int(map_config.get("active_limit_offset", 0)), 1))
 	if not bool(get_meta("survival_phase_a_test", false)):
 		wave_manager.configure_upgrades([2, 4, 6, 8])
 	if bool(get_meta("survival_test_mode", false)):
@@ -85,6 +91,7 @@ func _ready() -> void:
 	wave_manager.wave_completed.connect(_on_survival_wave_completed)
 	wave_manager.boss_requested.connect(_on_survival_boss_requested)
 	wave_manager.run_completed.connect(_on_survival_run_completed)
+	wave_manager.state_changed.connect(_on_wave_state_changed)
 	upgrade_manager = RunUpgradeManagerScript.new()
 	upgrade_manager.name = "RunUpgradeManager"
 	add_child(upgrade_manager)
@@ -108,8 +115,8 @@ func _ready() -> void:
 	_load_survival_records()
 	hud.set_survival_mode(true)
 	hud.hide_objective(true)
-	hud.show_banner("SURVIVAL PROTOCOL ONLINE", Color("55e39a"), false, 1.0)
-	sfx.play_music(&"level", 0.28)
+	hud.show_banner(str(map_config.get("display_name", "SURVIVAL PROTOCOL ONLINE")), Color("55e39a"), false, 1.35)
+	sfx.play_music(StringName(map_config.get("music", &"level")), 0.28)
 	wave_manager.start_run()
 
 
@@ -149,14 +156,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _create_arena_boundaries() -> void:
+	var bounds: Rect2 = map_config.get("camera_bounds", Rect2(0.0, 0.0, 1280.0, 720.0))
 	var right_wall := StaticBody2D.new()
 	right_wall.name = "SurvivalRightWall"
-	right_wall.position = Vector2(1280.0, 360.0)
+	right_wall.position = Vector2(bounds.end.x, bounds.position.y + bounds.size.y * 0.5)
 	right_wall.collision_layer = 1
 	right_wall.collision_mask = 6
 	var shape_node := CollisionShape2D.new()
 	var shape := RectangleShape2D.new()
-	shape.size = Vector2(32.0, 720.0)
+	shape.size = Vector2(32.0, bounds.size.y)
 	shape_node.shape = shape
 	right_wall.add_child(shape_node)
 	world.add_child(right_wall)
@@ -166,6 +174,74 @@ func _create_arena_art() -> void:
 	var art := SurvivalArenaArtScript.new()
 	art.name = "SurvivalArenaArt"
 	world.add_child(art)
+	art.configure(
+		StringName(map_config.get("art_theme", &"industrial")),
+		map_config.get("camera_bounds", Rect2(0.0, 0.0, 1280.0, 720.0)),
+		map_config.get("platforms", []) as Array,
+	)
+
+
+func _prepare_survival_world() -> void:
+	# The inherited PVE level remains the gameplay/system source, but authored
+	# mission platforms must not leak into map-specific survival geometry.
+	for child in world.get_children():
+		if child.name.to_lower().begins_with("platform"):
+			child.visible = false
+			if child is CollisionObject2D:
+				child.collision_layer = 0
+	if map_id == SurvivalMapConfigScript.SUBLEVEL_ID:
+		for node_name in ["FarArt", "MidArt", "LevelArt", "FrontArt"]:
+			var inherited_art := world.get_node_or_null(node_name)
+			if inherited_art != null:
+				inherited_art.visible = false
+		$Sky/Base.color = Color("08141f")
+		$Sky/Horizon.color = Color("102732")
+		$Sky/GlowBand.color = Color("234f4a")
+		$Sky/GlowBand.modulate.a = 0.32
+
+
+func _create_map_platforms() -> void:
+	for platform_value in map_config.get("platforms", []) as Array:
+		var definition: Dictionary = platform_value
+		var platform := StaticBody2D.new()
+		platform.name = str(definition.get("name", "SurvivalPlatform"))
+		platform.position = definition.get("position", Vector2.ZERO)
+		platform.collision_layer = 1
+		platform.collision_mask = 6
+		var collision := CollisionShape2D.new()
+		var shape := RectangleShape2D.new()
+		shape.size = definition.get("size", Vector2(200.0, 22.0))
+		collision.shape = shape
+		platform.add_child(collision)
+		world.add_child(platform)
+
+
+func _create_map_hazards() -> void:
+	map_hazard_root = Node2D.new()
+	map_hazard_root.name = "MapHazards"
+	world.add_child(map_hazard_root)
+	for hazard_value in map_config.get("hazards", []) as Array:
+		var definition: Dictionary = hazard_value
+		if StringName(definition.get("kind", &"")) != &"steam_vent":
+			continue
+		var vent := SteamVentScript.new()
+		vent.name = "SteamVent"
+		map_hazard_root.add_child(vent)
+		vent.configure(definition, player, enemies)
+		vent.cue_requested.connect(_on_map_hazard_cue_requested)
+		map_hazards.append(vent)
+
+
+func _adapt_waves_for_map(source_waves: Array[Dictionary]) -> Array[Dictionary]:
+	var adapted := source_waves.duplicate(true)
+	var active_offset := int(map_config.get("active_limit_offset", 0))
+	var interval_scale := float(map_config.get("spawn_interval_scale", 1.0))
+	for wave in adapted:
+		if bool(wave.get("boss", false)):
+			continue
+		wave["active_limit"] = maxi(int(wave.get("active_limit", 6)) + active_offset, 1)
+		wave["spawn_interval"] = maxf(float(wave.get("spawn_interval", 0.42)) * interval_scale, 0.1)
+	return adapted
 
 
 func _on_survival_wave_started(wave_number: int, total: int, title: String) -> void:
@@ -177,8 +253,8 @@ func _on_survival_wave_started(wave_number: int, total: int, title: String) -> v
 		survival_balance_telemetry.begin_wave(wave_number, title, _run_elapsed)
 
 
-func _on_spawn_warning_requested(ticket: int, _kind: String, side: String, warning_time: float) -> void:
-	var spawn_position := _choose_spawn_position(side, ticket)
+func _on_spawn_warning_requested(ticket: int, kind: String, side: String, warning_time: float) -> void:
+	var spawn_position := _choose_spawn_position(side, ticket, kind)
 	_spawn_positions[ticket] = spawn_position
 	var warning := SpawnWarningScript.new()
 	warning.global_position = spawn_position
@@ -189,7 +265,7 @@ func _on_spawn_warning_requested(ticket: int, _kind: String, side: String, warni
 func _on_survival_spawn_requested(ticket: int, kind: String, side: String) -> void:
 	if run_state in ["dead", "complete", "survival_dead", "survival_complete"]:
 		return
-	var spawn_position: Vector2 = _spawn_positions.get(ticket, _choose_spawn_position(side, ticket))
+	var spawn_position: Vector2 = _spawn_positions.get(ticket, _choose_spawn_position(side, ticket, kind))
 	_spawn_positions.erase(ticket)
 	var enemy := _spawn_enemy(kind, spawn_position, 0.0, false, false, wave_manager.current_wave)
 	wave_manager.register_spawned(ticket, enemy)
@@ -205,16 +281,26 @@ func _activate_spawned_enemy(instance_id: int) -> void:
 		enemy.activate()
 
 
-func _choose_spawn_position(side: String, ticket: int) -> Vector2:
-	var left_positions := [Vector2(120.0, 552.0), Vector2(270.0, 552.0)]
-	var right_positions := [Vector2(1010.0, 552.0), Vector2(1160.0, 552.0)]
+func _choose_spawn_position(side: String, ticket: int, kind: String = "assault") -> Vector2:
+	var groups: Dictionary = map_config.get("spawn_groups", {})
+	var left_ground: Array = groups.get("left_ground", []) as Array
+	var right_ground: Array = groups.get("right_ground", []) as Array
+	var left_positions: Array = left_ground.duplicate()
+	var right_positions: Array = right_ground.duplicate()
+	# Ranged units can use the authored upper lanes. Melee/heavy roles remain on
+	# ground routes so they can always reach the player without new navigation.
+	if kind == "gunner":
+		left_positions.append_array(groups.get("left_upper", []) as Array)
+		right_positions.append_array(groups.get("right_upper", []) as Array)
+	var bounds: Rect2 = map_config.get("camera_bounds", Rect2(0.0, 0.0, 1280.0, 720.0))
+	var arena_center := bounds.position.x + bounds.size.x * 0.5
 	var candidates: Array = []
 	if side == "left":
 		candidates = left_positions
 	elif side == "right":
 		candidates = right_positions
 	elif side == "far":
-		candidates = left_positions if player.global_position.x >= ARENA_CENTER else right_positions
+		candidates = left_positions if player.global_position.x >= arena_center else right_positions
 	elif side in ["split", "edges"]:
 		candidates = left_positions if ticket % 2 == 0 else right_positions
 	else:
@@ -222,16 +308,35 @@ func _choose_spawn_position(side: String, ticket: int) -> Vector2:
 	var safe: Array[Vector2] = []
 	for candidate_value in candidates:
 		var candidate: Vector2 = candidate_value
-		var clear_of_enemy := true
-		for enemy in enemies.get_children():
-			if bool(enemy.get("alive")) and candidate.distance_to(enemy.global_position) < 96.0:
-				clear_of_enemy = false
-				break
-		if candidate.distance_to(player.global_position) >= 360.0 and clear_of_enemy:
+		if candidate.distance_to(player.global_position) >= 340.0 and _spawn_position_is_clear(candidate):
 			safe.append(candidate)
 	if safe.is_empty():
-		safe = [Vector2(120.0, 552.0) if player.global_position.x > ARENA_CENTER else Vector2(1160.0, 552.0)]
+		var fallback_group: Array = left_ground if player.global_position.x > arena_center else right_ground
+		for fallback_value in fallback_group:
+			var fallback: Vector2 = fallback_value
+			if _spawn_position_is_clear(fallback):
+				safe.append(fallback)
+	if safe.is_empty():
+		# Authored ground points are guaranteed valid; choosing the farthest one is
+		# safer than stalling the wave if every point is momentarily occupied.
+		for fallback_value in left_ground + right_ground:
+			safe.append(Vector2(fallback_value))
+		safe.sort_custom(func(a: Vector2, b: Vector2) -> bool:
+			return a.distance_squared_to(player.global_position) > b.distance_squared_to(player.global_position)
+		)
 	return safe[absi(ticket) % safe.size()]
+
+
+func _spawn_position_is_clear(candidate: Vector2) -> bool:
+	for enemy in enemies.get_children():
+		if bool(enemy.get("alive")) and candidate.distance_to(enemy.global_position) < 96.0:
+			return false
+	var query := PhysicsPointQueryParameters2D.new()
+	query.position = candidate
+	query.collision_mask = 1
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	return get_world_2d().direct_space_state.intersect_point(query, 1).is_empty()
 
 
 func _on_survival_counters_changed(wave_number: int, total: int, alive_count: int, pending_count: int, countdown: float, state: StringName) -> void:
@@ -271,7 +376,7 @@ func _on_survival_upgrade_chosen(upgrade_id: StringName) -> void:
 	upgrade_overlay.confirm_selection(upgrade_id)
 	sfx.play_cue(&"ui_confirm")
 	var delay := 0.01 if bool(get_meta("survival_test_mode", false)) else 0.18
-	await get_tree().create_timer(delay).timeout
+	await get_tree().create_timer(delay, false).timeout
 	if not is_instance_valid(upgrade_overlay) or run_state != "upgrade_selection":
 		return
 	upgrade_overlay.close()
@@ -354,10 +459,11 @@ func _on_survival_wave_completed(wave_number: int) -> void:
 
 func _on_survival_boss_requested(_wave_number: int) -> void:
 	_clear_hostile_dangers()
+	_set_map_hazards_suspended(true)
 	combat_pacing.set_boss_mode(true)
 	boss_summons_alive = 0
 	_boss_defeat_pending = false
-	boss.global_position = Vector2(1010.0, 520.0)
+	boss.global_position = map_config.get("boss_spawn", Vector2(1010.0, 520.0))
 	boss.activate(player)
 	if telemetry != null:
 		telemetry.boss_started()
@@ -365,6 +471,7 @@ func _on_survival_boss_requested(_wave_number: int) -> void:
 	combat_feedback.request_shake(&"boss_intro", &"survival_boss_intro")
 	sfx.play_cue(&"boss_intro")
 	sfx.play_music(&"boss", 0.45)
+	_release_hazards_after_boss_intro()
 
 
 func _on_boss_died(_defeated_boss: Node) -> void:
@@ -376,6 +483,7 @@ func _on_boss_died(_defeated_boss: Node) -> void:
 	hud.set_score(score)
 	combat_pacing.set_boss_mode(false)
 	run_state = "survival_boss_defeated"
+	_set_map_hazards_suspended(true)
 	_clear_hostile_dangers()
 	for grenade in grenades.get_children():
 		grenade.queue_free()
@@ -516,6 +624,7 @@ func _build_survival_summary(reached_wave: int) -> Dictionary:
 
 
 func _clear_survival_runtime(include_boss: bool = true) -> void:
+	_set_map_hazards_suspended(true)
 	if damage_numbers != null:
 		damage_numbers.clear_all()
 	if impact_effects != null:
@@ -548,12 +657,36 @@ func _save_survival_records() -> void:
 
 
 func _recover_survival_enemies() -> void:
+	var bounds: Rect2 = map_config.get("camera_bounds", Rect2(0.0, 0.0, 1280.0, 720.0))
+	var recovery_points: Array = map_config.get("recovery_spawns", []) as Array
 	for enemy in enemies.get_children():
 		if not bool(enemy.get("alive")):
 			continue
-		if enemy.global_position.y > 760.0 or enemy.global_position.x < ARENA_LEFT - 40.0 or enemy.global_position.x > ARENA_RIGHT + 40.0:
-			enemy.global_position = Vector2(120.0 if player.global_position.x > ARENA_CENTER else 1160.0, 552.0)
+		if enemy.global_position.y > bounds.end.y + 40.0 or enemy.global_position.x < bounds.position.x - 40.0 or enemy.global_position.x > bounds.end.x + 40.0:
+			var chosen: Vector2 = recovery_points[0] if player.global_position.x > bounds.position.x + bounds.size.x * 0.5 else recovery_points.back()
+			enemy.global_position = chosen
 			enemy.velocity = Vector2.ZERO
+
+
+func _on_wave_state_changed(state_name: StringName) -> void:
+	_set_map_hazards_suspended(state_name not in [&"spawning", &"active"])
+
+
+func _set_map_hazards_suspended(value: bool) -> void:
+	for hazard in map_hazards:
+		if is_instance_valid(hazard) and hazard.has_method("set_suspended"):
+			hazard.set_suspended(value)
+
+
+func _release_hazards_after_boss_intro() -> void:
+	var delay := 0.02 if bool(get_meta("survival_test_mode", false)) else 1.4
+	await get_tree().create_timer(delay).timeout
+	if wave_manager != null and wave_manager.get_state_name() == &"boss" and run_state == "boss":
+		_set_map_hazards_suspended(false)
+
+
+func _on_map_hazard_cue_requested(cue: StringName, world_position: Vector2, priority: bool) -> void:
+	sfx.play_world_cue(cue, world_position, player.global_position, priority)
 
 
 func _update_objective() -> void:
