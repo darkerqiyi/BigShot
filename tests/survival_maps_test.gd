@@ -3,6 +3,7 @@ extends SceneTree
 const IndustrialScene := preload("res://scenes/survival/survival.tscn")
 const SublevelScene := preload("res://scenes/survival/survival_sublevel_09.tscn")
 const MapConfig := preload("res://scripts/survival/survival_map_config.gd")
+const Tuning := preload("res://scripts/config/game_tuning.gd")
 
 var failures: Array[String] = []
 
@@ -60,6 +61,8 @@ func _complete_map(scene: PackedScene, expected_map_id: StringName) -> Dictionar
 	_expect(game.player.global_position.is_equal_approx(expected_config["player_spawn"]), "%s player spawn does not match map configuration" % expected_map_id)
 	_expect(game.boss.global_position.is_equal_approx(expected_config["boss_spawn"]), "%s Boss spawn does not match map configuration" % expected_map_id)
 	_expect(game.camera.level_left == (expected_config["camera_bounds"] as Rect2).position.x and game.camera.level_width == (expected_config["camera_bounds"] as Rect2).end.x, "%s camera bounds were not applied" % expected_map_id)
+	game.wave_manager.stop_run()
+	await _verify_spawn_mobility(game, expected_config, expected_map_id)
 	if expected_map_id == MapConfig.SUBLEVEL_ID:
 		_expect(game.world.get_node_or_null("LeftLowPlatform") != null and game.world.get_node_or_null("RightLowPlatform") != null, "Sublevel-09 platform bodies are missing")
 		_expect(game.map_hazards.size() == 1, "Sublevel-09 steam vent was not created")
@@ -67,11 +70,12 @@ func _complete_map(scene: PackedScene, expected_map_id: StringName) -> Dictionar
 		_expect(game._choose_spawn_position("left", 2, "gunner").y < 500.0 and game._choose_spawn_position("right", 2, "gunner").y < 500.0, "Sublevel-09 upper ranged spawn groups are not selectable")
 		_expect(is_equal_approx(game._choose_spawn_position("left", 1, "assault").y, 552.0) and is_equal_approx(game._choose_spawn_position("right", 1, "elite").y, 552.0), "melee/heavy roles can spawn on unreachable upper lanes")
 		await _verify_sublevel_platform_mobility(game)
-		game.player.global_position = expected_config["player_spawn"]
-		game.player.velocity = Vector2.ZERO
-		game.wave_manager.start_run()
 	else:
 		_expect(game.map_hazards.is_empty(), "industrial map unexpectedly created a steam vent")
+	game.player.cancel_transient_actions()
+	game.player.global_position = expected_config["player_spawn"]
+	game.player.velocity = Vector2.ZERO
+	game.wave_manager.start_run()
 
 	var frame_budget := 4200
 	while is_instance_valid(game) and game.run_state != "complete" and frame_budget > 0:
@@ -172,6 +176,91 @@ func _verify_sublevel_platform_mobility(game: Node) -> void:
 			break
 	Input.action_release("move_right")
 	_expect(landed_on_platform and game.player.global_position.y <= 461.0, "player cannot reach Sublevel-09 upper combat platform with the existing jump")
+
+
+func _verify_spawn_mobility(game: Node, config: Dictionary, expected_map_id: StringName) -> void:
+	var player: CharacterBody2D = game.player
+	var spawn: Vector2 = config["player_spawn"]
+	player.cancel_transient_actions()
+	player.controls_enabled = true
+	player.global_position = spawn
+	player.velocity = Vector2.ZERO
+	await physics_frame
+	var validation: Dictionary = game.validate_survival_player_spawn()
+	_expect(bool(validation.get("valid", false)), "%s player spawn overlaps static collision or is outside map bounds: %s" % [expected_map_id, validation])
+	_expect(not paused and player.process_mode != Node.PROCESS_MODE_DISABLED and player.controls_enabled, "%s entered with movement processing disabled" % expected_map_id)
+	var bounds: Rect2 = config["camera_bounds"]
+	_expect(bounds.size.x > 0.0 and bounds.end.x > bounds.position.x, "%s movement bounds are invalid" % expected_map_id)
+
+	var start_right := player.global_position
+	Input.action_press("move_right")
+	for _frame in range(12):
+		await physics_frame
+	var right_position := player.global_position
+	var right_velocity := player.velocity
+	Input.action_release("move_right")
+	_expect(right_position.x > start_right.x + 20.0 and right_velocity.x > 0.0, "%s computes rightward velocity but does not move from its configured spawn" % expected_map_id)
+
+	player.global_position = spawn
+	player.velocity = Vector2.ZERO
+	await physics_frame
+	var start_left := player.global_position
+	Input.action_press("move_left")
+	for _frame in range(12):
+		await physics_frame
+	var left_position := player.global_position
+	Input.action_release("move_left")
+	_expect(left_position.x < start_left.x - 20.0 and player.velocity.x < 0.0, "%s cannot move left from its configured spawn" % expected_map_id)
+
+	player.global_position = spawn
+	player.velocity = Vector2.ZERO
+	await physics_frame
+	await physics_frame
+	var jump_start_y := player.global_position.y
+	player.request_jump()
+	Input.action_press("move_right")
+	var jump_min_y := jump_start_y
+	for _frame in range(12):
+		await physics_frame
+		jump_min_y = minf(jump_min_y, player.global_position.y)
+	Input.action_release("move_right")
+	_expect(jump_min_y < jump_start_y - 20.0, "%s cannot jump from its configured spawn" % expected_map_id)
+
+	player.global_position = spawn
+	player.velocity = Vector2.ZERO
+	await physics_frame
+	await physics_frame
+	Input.action_press("move_right")
+	Input.action_press("sprint")
+	for _frame in range(18):
+		await physics_frame
+	var sprint_position := player.global_position
+	var sprint_velocity := player.velocity.x
+	var sprint_started: bool = player.is_sprinting
+	player.request_jump()
+	for _frame in range(4):
+		await physics_frame
+	var inherited_sprint_momentum: bool = player.launched_from_sprint and absf(player.velocity.x) > Tuning.PLAYER_MAX_SPEED
+	Input.action_release("sprint")
+	Input.action_release("move_right")
+	_expect(sprint_started and sprint_position.x > spawn.x + 35.0, "%s cannot sprint from its configured spawn" % expected_map_id)
+	_expect(inherited_sprint_momentum, "%s sprint jump did not inherit momentum (launch velocity %s)" % [expected_map_id, sprint_velocity])
+
+	player.cancel_transient_actions()
+	player.global_position = spawn
+	player.velocity = Vector2.ZERO
+	player.roll_cooldown_remaining = 0.0
+	await physics_frame
+	await physics_frame
+	var roll_start_x := player.global_position.x
+	player._register_direction_tap(1)
+	player._register_direction_tap(1)
+	var roll_started: bool = player.is_rolling
+	for _frame in range(5):
+		await physics_frame
+	_expect(roll_started and player.global_position.x > roll_start_x + 20.0, "%s cannot execute DD roll from its configured spawn" % expected_map_id)
+	player.cancel_transient_actions()
+	print("SURVIVAL_MAP_MOBILITY map=%s spawn=%s right=%s left=%s jump_min_y=%.2f sprint_x=%.2f sprint_velocity=%.2f roll_x=%.2f validation=%s" % [expected_map_id, spawn, right_position, left_position, jump_min_y, sprint_position.x, sprint_velocity, player.global_position.x, validation])
 
 
 func _expect(condition: bool, message: String) -> void:

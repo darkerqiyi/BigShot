@@ -54,7 +54,10 @@ static func _sublevel_09() -> Dictionary:
 		"description": "TIGHT LANES // VERTICAL PRESSURE // STEAM",
 		"difficulty": "TACTICAL",
 		"art_theme": &"sublevel_09",
-		"player_spawn": Vector2(800.0, 552.0),
+		# Stand on top of CenterStep (top y = 531, player half-height = 32).
+		# The previous y=552 spawn overlapped both CenterStep and the floor,
+		# trapping the CharacterBody2D between two static colliders.
+		"player_spawn": Vector2(800.0, 499.0),
 		"camera_bounds": Rect2(0.0, 0.0, 1600.0, 720.0),
 		"spawn_groups": {
 			"left_ground": [Vector2(110.0, 552.0), Vector2(250.0, 552.0)],

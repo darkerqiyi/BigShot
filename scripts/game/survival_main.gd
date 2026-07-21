@@ -39,6 +39,7 @@ var map_id: StringName = SurvivalMapConfigScript.INDUSTRIAL_ID
 var map_config: Dictionary = {}
 var map_hazard_root: Node2D
 var map_hazards: Array[Node] = []
+var spawn_validation_result: Dictionary = {}
 var _spawn_positions: Dictionary = {}
 var _pending_bounty_ticket := -1
 var _bounty_target_id := 0
@@ -81,6 +82,7 @@ func _ready() -> void:
 	_create_arena_art()
 	_create_map_platforms()
 	_create_map_hazards()
+	call_deferred("_validate_initial_player_spawn")
 	wave_manager = SurvivalWaveManagerScript.new()
 	wave_manager.name = "WaveManager"
 	add_child(wave_manager)
@@ -140,6 +142,60 @@ func _ready() -> void:
 	hud.show_banner(str(map_config.get("display_name", "SURVIVAL PROTOCOL ONLINE")), Color("55e39a"), false, 1.35)
 	sfx.play_music(StringName(map_config.get("music", &"level")), 0.28)
 	wave_manager.start_run()
+
+
+func _validate_initial_player_spawn() -> void:
+	# Allow newly-created map collision bodies to reach the physics server before
+	# validating. This is diagnostic only and never teleports or disables collision.
+	await get_tree().physics_frame
+	if not is_instance_valid(player):
+		return
+	spawn_validation_result = validate_survival_player_spawn()
+	if not bool(spawn_validation_result.get("valid", false)) and OS.is_debug_build():
+		push_error("SURVIVAL_SPAWN_INVALID %s" % spawn_validation_result)
+
+
+func validate_survival_player_spawn() -> Dictionary:
+	var bounds: Rect2 = map_config.get("camera_bounds", Rect2(0.0, 0.0, 1280.0, 720.0))
+	var collision: CollisionShape2D = player.get_node_or_null("CollisionShape2D")
+	var overlap_names: Array[String] = []
+	var inside_bounds := false
+	if collision != null and collision.shape != null:
+		var query_shape: Shape2D = collision.shape.duplicate()
+		# Resting contact with the floor is valid. Contract the diagnostic shape by
+		# one pixel so only actual penetration is reported.
+		if query_shape is RectangleShape2D:
+			var rectangle := query_shape as RectangleShape2D
+			rectangle.size = Vector2(maxf(rectangle.size.x - 2.0, 1.0), maxf(rectangle.size.y - 2.0, 1.0))
+			var half_size := rectangle.size * 0.5
+			var center := collision.global_position
+			inside_bounds = center.x - half_size.x >= bounds.position.x and center.x + half_size.x <= bounds.end.x and center.y - half_size.y >= bounds.position.y and center.y + half_size.y <= bounds.end.y
+		else:
+			inside_bounds = bounds.has_point(collision.global_position)
+		var query := PhysicsShapeQueryParameters2D.new()
+		query.shape = query_shape
+		query.transform = collision.global_transform
+		query.collision_mask = player.collision_mask
+		query.collide_with_areas = false
+		query.exclude = [player.get_rid()]
+		for hit in player.get_world_2d().direct_space_state.intersect_shape(query, 16):
+			var collider: Object = hit.get("collider")
+			overlap_names.append(str(collider.get_path()) if collider is Node else str(collider))
+	var result := {
+		"valid": collision != null and inside_bounds and overlap_names.is_empty(),
+		"map_id": map_id,
+		"configured_spawn": map_config.get("player_spawn", Vector2.ZERO),
+		"actual_position": player.global_position,
+		"inside_bounds": inside_bounds,
+		"overlaps": overlap_names,
+		"camera_bounds": bounds,
+		"paused": get_tree().paused,
+		"process_mode": player.process_mode,
+		"controls_enabled": player.controls_enabled,
+		"collision_layer": player.collision_layer,
+		"collision_mask": player.collision_mask,
+	}
+	return result
 
 
 func _process(delta: float) -> void:
