@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/mode_select.gd" id="1_menu"]
+[ext_resource type="Script" path="res://scripts/survival/survival_map_preview.gd" id="2_preview"]
 
 [node name="ModeSelect" type="Control"]
 layout_mode = 3
@@ -89,4 +90,117 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.443, 0.514, 0.584, 1)
 theme_override_font_sizes/font_size = 12
 text = "MOUSE / ARROWS + ENTER  •  1 PVE  •  2 SURVIVAL"
+horizontal_alignment = 1
+
+[node name="MapCenter" type="CenterContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="MapCenter"]
+custom_minimum_size = Vector2(940, 520)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="MapCenter/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="MapCenter/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.827, 0.353, 1)
+theme_override_font_sizes/font_size = 30
+text = "SURVIVAL // SELECT BATTLEGROUND"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="MapCenter/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.396, 0.784, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "TWO MAPS // SHARED 10-WAVE PROTOCOL"
+horizontal_alignment = 1
+
+[node name="Divider" type="ColorRect" parent="MapCenter/Panel/Content"]
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
+color = Color(0.271, 0.847, 0.816, 1)
+
+[node name="Cards" type="HBoxContainer" parent="MapCenter/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Industrial" type="PanelContainer" parent="MapCenter/Panel/Content/Cards"]
+custom_minimum_size = Vector2(430, 330)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="MapCenter/Panel/Content/Cards/Industrial"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Preview" type="Control" parent="MapCenter/Panel/Content/Cards/Industrial/Content"]
+custom_minimum_size = Vector2(390, 142)
+layout_mode = 2
+script = ExtResource("2_preview")
+theme_id = "industrial"
+
+[node name="Name" type="Label" parent="MapCenter/Panel/Content/Cards/Industrial/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.827, 0.353, 1)
+theme_override_font_sizes/font_size = 18
+text = "IRON DISTRICT // 工业城区"
+
+[node name="Description" type="Label" parent="MapCenter/Panel/Content/Cards/Industrial/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.82, 0.88, 1)
+text = "OPEN LANES // LONG-RANGE CONTROL\nDIFFICULTY // STANDARD"
+
+[node name="Start" type="Button" parent="MapCenter/Panel/Content/Cards/Industrial/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "1  //  DEPLOY"
+
+[node name="Sublevel" type="PanelContainer" parent="MapCenter/Panel/Content/Cards"]
+custom_minimum_size = Vector2(430, 330)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="MapCenter/Panel/Content/Cards/Sublevel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Preview" type="Control" parent="MapCenter/Panel/Content/Cards/Sublevel/Content"]
+custom_minimum_size = Vector2(390, 142)
+layout_mode = 2
+script = ExtResource("2_preview")
+theme_id = "sublevel_09"
+
+[node name="Name" type="Label" parent="MapCenter/Panel/Content/Cards/Sublevel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.682, 0.239, 1)
+theme_override_font_sizes/font_size = 18
+text = "SUBLEVEL-09 // 废弃地下运输站"
+
+[node name="Description" type="Label" parent="MapCenter/Panel/Content/Cards/Sublevel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.82, 0.88, 1)
+text = "TIGHT LANES // VERTICAL PRESSURE // STEAM\nDIFFICULTY // TACTICAL"
+
+[node name="Start" type="Button" parent="MapCenter/Panel/Content/Cards/Sublevel/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "2  //  DEPLOY"
+
+[node name="Back" type="Button" parent="MapCenter/Panel/Content"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "BACK"
+
+[node name="Hint" type="Label" parent="MapCenter/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.443, 0.514, 0.584, 1)
+theme_override_font_sizes/font_size = 12
+text = "MOUSE / ARROWS + ENTER  •  1 INDUSTRIAL  •  2 SUBLEVEL  •  ESC BACK"
 horizontal_alignment = 1

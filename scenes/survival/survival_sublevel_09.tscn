@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/survival/survival.tscn" id="1_survival"]
+
+[node name="SurvivalSublevel09" instance=ExtResource("1_survival")]
+metadata/survival_map_id = "sublevel_09"

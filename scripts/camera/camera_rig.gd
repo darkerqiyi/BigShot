@@ -4,6 +4,7 @@ const Tuning := preload("res://scripts/config/game_tuning.gd")
 
 @export var target_path: NodePath
 @export var level_width := 20000.0
+@export var level_left := 0.0
 @export var fixed_y := 360.0
 
 @onready var target: CharacterBody2D = get_node_or_null(target_path) as CharacterBody2D
@@ -27,7 +28,14 @@ func _physics_process(delta: float) -> void:
 		var target_sprint_airborne := bool(target.get("launched_from_sprint"))
 		var desired_look_ahead := calculate_desired_look_ahead(target.velocity.x, target_aim.x, aim_bonus, target_sprinting or target_sprint_airborne)
 		_look_ahead = smooth_look_ahead(_look_ahead, desired_look_ahead, delta)
-		var desired_x := clampf(target.global_position.x + _look_ahead, 640.0, level_width - 640.0)
+		var half_view_width := 640.0
+		var minimum_x := level_left + half_view_width
+		var maximum_x := level_width - half_view_width
+		if maximum_x < minimum_x:
+			var center_x := (level_left + level_width) * 0.5
+			minimum_x = center_x
+			maximum_x = center_x
+		var desired_x := clampf(target.global_position.x + _look_ahead, minimum_x, maximum_x)
 		global_position.x = roundf(lerpf(global_position.x, desired_x, 1.0 - exp(-delta * Tuning.CAMERA_FOLLOW_RESPONSE)))
 		global_position.y = fixed_y
 	trauma = maxf(trauma - delta * Tuning.CAMERA_SHAKE_DECAY, 0.0)
@@ -58,6 +66,15 @@ func clear_feedback() -> void:
 	trauma = 0.0
 	_recoil_offset = Vector2.ZERO
 	offset = Vector2.ZERO
+
+
+func configure_bounds(bounds: Rect2) -> void:
+	level_left = bounds.position.x
+	level_width = bounds.end.x
+	fixed_y = bounds.position.y + bounds.size.y * 0.5
+	var minimum_x := level_left + 640.0
+	var maximum_x := level_width - 640.0
+	global_position = Vector2((minimum_x + maximum_x) * 0.5 if maximum_x >= minimum_x else (level_left + level_width) * 0.5, fixed_y)
 
 
 static func calculate_desired_look_ahead(velocity_x: float, aim_x: float, aim_bonus: float = 0.0, sprinting: bool = false) -> float:

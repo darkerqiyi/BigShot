@@ -193,6 +193,17 @@ func _update_readout() -> void:
 			", ".join(upgrade_snapshot.get("candidate_ids", []) as Array),
 			JSON.stringify(upgrade_snapshot.get("stacks", {})),
 		]
+	var event_director := get_node_or_null("../EventDirector")
+	if event_director != null and event_director.has_method("get_debug_snapshot"):
+		var event_snapshot: Dictionary = event_director.get_debug_snapshot()
+		readout.text += "\n\nEVENTS: %s  seed %d  wave %d  %.1fs\nSchedule: %s\nHistory: %s" % [
+			str(event_snapshot.get("active_event", &"none")),
+			int(event_snapshot.get("seed", 0)),
+			int(event_snapshot.get("active_wave", 0)),
+			float(event_snapshot.get("remaining", 0.0)),
+			JSON.stringify(event_snapshot.get("schedule", {})),
+			JSON.stringify(event_snapshot.get("history", [])),
+		]
 	var nearest_enemy: Node2D = null
 	var nearest_distance := INF
 	if player is Node2D:

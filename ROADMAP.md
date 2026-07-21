@@ -254,6 +254,34 @@ Status: **Pass for automated damage/pacing/performance gates; human aiming/reada
 - With the unchanged 24-damage rifle baseline and existing accent round, wave-one body/head shot counts are assault 6/3, gunner 5/3, shield 9/5 when unblocked, and elite 35/18. Wave-nine assault/gunner health reaches 196/168, or roughly 8/7 plain body rounds before accent cadence, so late pressure rises without turning every role into a health sponge.
 - `survival_headshot_pacing_test.gd` locks real body/head damage, no body/head double application, shield/Boss/explosion rules, pool bounds and cleanup, linear health, shot counts, and the 118-enemy wave curve. Debug summaries now include each wave's actual combat duration, wait-after time, composition, peak active/attacking/projectile/effect counts, weapon damage/kills/headshots, supplies, and selected upgrade.
 
+### Two-map survival configuration and Sublevel-09
+
+Status: **Pass for automated lifecycle, collision, hazard, render, and regression gates; human map-flow acceptance remains Partial** (2026-07-19).
+
+- `scripts/survival/survival_map_config.gd` is the single map registry for map identity, scene path, player/enemy/Boss spawns, horizontal camera bounds, platform geometry, recovery points, environment hazards, presentation identity, and small active/spawn pacing offsets. The existing `SurvivalWaveManager` and ten-wave data remain shared and map-agnostic.
+- The original `scenes/survival/survival.tscn` remains the open industrial arena. `scenes/survival/survival_sublevel_09.tscn` selects the new `SUBLEVEL-09 // 废弃地下运输站` configuration without copying the survival controller or WaveManager.
+- The mode menu now opens a two-card survival map selector with original programmatic pixel previews. Both maps are available immediately; restart reloads the selected scene and return-to-menu clears the run before allowing a new map choice.
+- Sublevel-09 uses a 1600×720 world bound, one main floor, two reachable low upper lanes plus a center step, four ground spawn points, four upper ranged spawn points, a dedicated Boss zone, a one-lower active cap, and 10% tighter spawn cadence. Assault/shield/elite roles stay on traversable ground routes while gunners may use upper positions.
+- Its only new environment mechanic is a steam vent: 4.5-second initial delay, 1.25-second warning, 0.95-second active window, 6.2-second cooldown, 18 player damage, and 24 ordinary-enemy damage. It reports `environment` damage, does not inherit projectile-roll immunity, and suspends during countdown/rest/upgrade/death/settlement plus the Boss intro.
+- `survival_maps_test.gd` completes all ten waves, four upgrade choices, and one Boss settlement on both maps (accelerated structural runs: 11.82s industrial and 12.26s Sublevel-09). It also checks player/Boss/camera configuration, platform jump reachability, compact active caps, steam warning/damage/pause behavior, and same-map death restart with clean upgrade/hazard state.
+- A real 1280×720 OpenGL/Metal render at `/tmp/bigshot-sublevel09.png` confirms the underground train, tunnel ribs, pipes, warning stripes, platforms, four role silhouettes, stable HUD, and steam telegraph are visible without exposing map-edge blank space.
+
+### Run-local random events and supply choices
+
+Status: **Pass for automated scheduling, lifecycle, two-map, and PVE-isolation gates; human event pacing remains Partial** (2026-07-21).
+
+- `scripts/survival/survival_event_data.gd` owns three map/wave/weight/duration/reward/cooldown definitions. `SurvivalEventDirector` builds a seeded two-event maximum schedule across waves 3/5/7, prevents duplicate event types, owns the one-shot result ledger, and exposes debug force/expire/snapshot APIs.
+- Supply Drop holds WaveManager at a narrow event-resolution seam after all enemies are gone. Its three cards show real HP/ammo/grenade before-and-after values; full resources become explicit score conversions rather than dead choices. Selection resumes the existing two-second pre-wave rest and never enters the upgrade stack pool.
+- Elite Bounty adds one existing elite through WaveManager's bounded spawn queue, starts its 26-second timer only when the marked target actually spawns, and resolves every damage source through the existing death signal. Success grants 750 score plus one small resource; timeout removes only the marker and never blocks wave completion.
+- Emergency Reinforcements runs for at most 24 seconds, temporarily changes spawn interval to 75%, raises the active cap by one, and queues at most one existing elite. Timeout survival or clearing the wave grants 600 score plus one small resource; base spawn values are restored from captured wave values.
+- The compact event panel and supply cards remain below the authoritative HUD and upgrade layer. Pausing freezes Director time; upgrade selection hides event UI; event resolution suspends map hazards; Boss start/death/restart/menu exit clear all target IDs, timers, spawn modifiers, and temporary UI.
+- Settlement/failure summaries include event name/status, successful bounty/reinforcement counts, and acquired supply types. No EventDirector is created in PVE, and event-disabled survival retains the original ten-wave behavior.
+
+Current acceptance evidence:
+
+- `survival_events_test.gd` covers disabled scheduling, forced supply choice, bounty success and timeout failure, emergency spawn pressure, exactly two distinct seeded events, two complete ten-wave maps, no event/upgrade overlap, event-death restart, Boss cleanup, settlement statistics, and PVE isolation.
+- Existing `survival_maps_test.gd` remains green with events disabled under its legacy test metadata, proving the new seam does not alter the original two-map ten-wave contract.
+
 ### Phase 2 — Shooting, ballistics, and damage
 
 Prototype status: **Pass** — four differentiated firearms, per-weapon magazine/reload state, direct switching, ray-safe projectiles, falloff, bounded penetration, team filtering, player/enemy damage and death.

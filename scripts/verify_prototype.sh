@@ -300,6 +300,28 @@ if [[ -n "$filtered_errors" ]]; then
 fi
 grep "SURVIVAL_TEN_WAVE_PASS" "$LOG_DIR/survival_ten.log"
 
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_maps_test.gd >"$LOG_DIR/survival_maps.log" 2>&1; then
+	cat "$LOG_DIR/survival_maps.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/survival_maps.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SURVIVAL_MAPS_PASS" "$LOG_DIR/survival_maps.log"
+
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_events_test.gd >"$LOG_DIR/survival_events.log" 2>&1; then
+	cat "$LOG_DIR/survival_events.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/survival_events.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SURVIVAL_EVENTS_PASS" "$LOG_DIR/survival_events.log"
+
 if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_scripted_playthrough_test.gd >"$LOG_DIR/survival_playthrough.log" 2>&1; then
 	cat "$LOG_DIR/survival_playthrough.log" >&2
 	exit 1
@@ -332,4 +354,4 @@ if [[ -n "$filtered_errors" ]]; then
 	exit 1
 fi
 
-printf 'PROTOTYPE_VERIFY_PASS PVE regression, survival 3/10-wave upgrade/headshot loops, mode selection, abilities, scripted playthroughs, and 120-frame runtime checks passed\n'
+printf 'PROTOTYPE_VERIFY_PASS PVE regression, two-map survival 3/10-wave upgrade/headshot loops, mode/map selection, abilities, scripted playthroughs, and 120-frame runtime checks passed\n'
