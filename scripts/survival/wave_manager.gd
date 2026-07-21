@@ -19,6 +19,7 @@ enum State {
 	ACTIVE,
 	REST,
 	UPGRADE_SELECTION,
+	EVENT_RESOLUTION,
 	BOSS,
 	COMPLETE,
 	STOPPED,
@@ -55,6 +56,10 @@ var _debug_timings_enabled := false
 var _debug_resume_state := -1
 var _debug_resume_countdown := 0.0
 var _fast_start_requested := false
+var _event_hold_requested := false
+var _event_modifiers_active := false
+var _event_base_active_limit := 0
+var _event_base_spawn_interval := 0.0
 
 
 func configure(waves: Array[Dictionary], active_limit: int = 6) -> void:
@@ -106,6 +111,10 @@ func reset_run() -> void:
 	_spawned_this_batch = 0
 	_wave_completion_locked = false
 	_fast_start_requested = false
+	_event_hold_requested = false
+	_event_modifiers_active = false
+	_event_base_active_limit = 0
+	_event_base_spawn_interval = 0.0
 	_debug_resume_state = -1
 	_debug_resume_countdown = 0.0
 
@@ -132,6 +141,56 @@ func resume_after_upgrade() -> bool:
 		return true
 	_begin_rest(post_upgrade_intermission_duration)
 	return true
+
+
+func request_event_hold() -> bool:
+	if not _wave_completion_locked or state not in [State.SPAWNING, State.ACTIVE]:
+		return false
+	_event_hold_requested = true
+	return true
+
+
+func resume_after_event() -> bool:
+	if state != State.EVENT_RESOLUTION:
+		return false
+	_begin_rest(post_upgrade_intermission_duration)
+	return true
+
+
+func enqueue_event_enemy(kind: String, side: String = "far", priority: bool = true) -> int:
+	if state not in [State.SPAWNING, State.ACTIVE]:
+		return -1
+	var ticket := _next_ticket
+	_next_ticket += 1
+	var entry := {"ticket": ticket, "kind": kind, "side": side}
+	if priority:
+		_pending.push_front(entry)
+	else:
+		_pending.append(entry)
+	_emit_counters()
+	return ticket
+
+
+func apply_event_spawn_modifiers(interval_multiplier: float, active_bonus: int) -> void:
+	if state not in [State.SPAWNING, State.ACTIVE] or _event_modifiers_active:
+		return
+	_event_modifiers_active = true
+	_event_base_active_limit = max_active_enemies
+	_event_base_spawn_interval = spawn_interval
+	max_active_enemies = maxi(max_active_enemies + active_bonus, 1)
+	spawn_interval = maxf(spawn_interval * clampf(interval_multiplier, 0.5, 1.0), 0.01)
+	_emit_counters()
+
+
+func clear_event_spawn_modifiers() -> void:
+	if not _event_modifiers_active:
+		return
+	max_active_enemies = _event_base_active_limit
+	spawn_interval = _event_base_spawn_interval
+	_event_modifiers_active = false
+	_event_base_active_limit = 0
+	_event_base_spawn_interval = 0.0
+	_emit_counters()
 
 
 func debug_request_upgrade() -> bool:
@@ -220,6 +279,8 @@ func get_state_name() -> StringName:
 			return &"rest"
 		State.UPGRADE_SELECTION:
 			return &"upgrade_selection"
+		State.EVENT_RESOLUTION:
+			return &"event_resolution"
 		State.BOSS:
 			return &"boss"
 		State.COMPLETE:
@@ -265,8 +326,10 @@ func _begin_next_wave() -> void:
 		_finish_run()
 		return
 	current_wave += 1
+	clear_event_spawn_modifiers()
 	_wave_completion_locked = false
 	_fast_start_requested = false
+	_event_hold_requested = false
 	_defeated_ids.clear()
 	var definition: Dictionary = _waves[current_wave - 1]
 	if not _debug_timings_enabled:
@@ -279,8 +342,8 @@ func _begin_next_wave() -> void:
 		reinforcement_delay = 0.0
 	_reinforcement_cooldown = 0.0
 	_spawned_this_batch = 0
-	wave_started.emit(current_wave, total_waves, str(definition.get("title", "WAVE")))
 	if bool(definition.get("boss", false)):
+		wave_started.emit(current_wave, total_waves, str(definition.get("title", "WAVE")))
 		_set_state(State.BOSS)
 		boss_requested.emit(current_wave)
 		_emit_counters()
@@ -288,6 +351,7 @@ func _begin_next_wave() -> void:
 	_pending = _expand_entries(definition.get("entries", []) as Array)
 	_set_state(State.SPAWNING)
 	_spawn_cooldown = 0.0
+	wave_started.emit(current_wave, total_waves, str(definition.get("title", "WAVE")))
 	_emit_counters()
 
 
@@ -359,8 +423,14 @@ func _complete_current_wave() -> void:
 	_wave_completion_locked = true
 	completed_waves.append(current_wave)
 	wave_completed.emit(current_wave)
+	clear_event_spawn_modifiers()
 	if current_wave >= total_waves:
 		_finish_run()
+		return
+	if _event_hold_requested:
+		_set_state(State.EVENT_RESOLUTION)
+		countdown_remaining = 0.0
+		_emit_counters()
 		return
 	if upgrade_waves.has(current_wave):
 		_set_state(State.UPGRADE_SELECTION)

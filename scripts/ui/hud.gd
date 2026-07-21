@@ -337,6 +337,7 @@ func set_survival_status(wave: int, total_waves: int, alive: int, pending: int, 
 		&"active": "ENGAGED",
 		&"rest": "INTERMISSION",
 		&"upgrade_selection": "UPGRADE SELECT",
+		&"event_resolution": "FIELD EVENT",
 		&"boss": "IRON TEMPEST",
 		&"complete": "COMPLETE",
 		&"stopped": "RUN ENDED",
@@ -380,10 +381,11 @@ func show_survival_failure(summary: Dictionary, damage_source: String) -> void:
 	state_title.modulate = Style.DANGER
 	var elapsed_seconds := int(round(float(summary.get("elapsed", 0.0))))
 	var headshot_rate := float(summary.get("headshot_rate", 0.0)) * 100.0
-	state_subtitle.text = "REACHED WAVE %02d  •  TIME %02d:%02d  •  KILLS %03d\nDAMAGE %05d  •  TAKEN %04d  •  HEADSHOTS %02d / %.0f%%\nMOST USED // %s  •  LAST HIT // %s\nBUILD // %s" % [
+	var event_text := _survival_event_summary(summary)
+	state_subtitle.text = "REACHED WAVE %02d  •  TIME %02d:%02d  •  KILLS %03d\nDAMAGE %05d  •  TAKEN %04d  •  HEADSHOTS %02d / %.0f%%\nMOST USED // %s  •  LAST HIT // %s\nBUILD // %s\n%s" % [
 		int(summary.get("reached_wave", 0)), elapsed_seconds / 60, elapsed_seconds % 60, int(summary.get("kills", 0)),
 		int(summary.get("total_damage", 0)), int(summary.get("damage_received", 0)), int(summary.get("headshots", 0)), headshot_rate,
-		_weapon_display_name(StringName(summary.get("most_used_weapon", &"rifle"))), damage_source.to_upper(), _survival_build_text,
+		_weapon_display_name(StringName(summary.get("most_used_weapon", &"rifle"))), damage_source.to_upper(), _survival_build_text, event_text,
 	]
 	primary_button.text = "RESTART SURVIVAL"
 	secondary_button.text = "RETURN TO MENU"
@@ -408,13 +410,15 @@ func show_survival_settlement(summary: Dictionary) -> void:
 	var build_text := "NONE" if build_parts.is_empty() else "  •  ".join(build_parts)
 	var final_text := _survival_parameter_text(summary.get("upgrade_final_modifiers", {}) as Dictionary)
 	var boss_seconds := int(round(float(summary.get("boss_time", 0.0))))
-	state_subtitle.text = "10 WAVES CLEARED  •  SCORE %06d  •  TIME %02d:%02d\nKILLS %03d  •  DAMAGE %05d  •  TAKEN %04d  •  HEADSHOTS %02d / %.0f%%\nMOST USED // %s  •  BOSS %02d:%02d  •  BEST COMBO %02d  •  ROLL EVADES %02d\nAUTO %02d  SCATTER %02d  LANCE %02d  SIDE %02d  GRENADE %02d\nBUILD // %s\nFINAL // %s\nRECORD %06d  •  BEST TIME %02d:%02d" % [
+	var event_text := _survival_event_summary(summary)
+	state_subtitle.text = "10 WAVES CLEARED  •  SCORE %06d  •  TIME %02d:%02d\nKILLS %03d  •  DAMAGE %05d  •  TAKEN %04d  •  HEADSHOTS %02d / %.0f%%\nMOST USED // %s  •  BOSS %02d:%02d  •  BEST COMBO %02d  •  ROLL EVADES %02d\nAUTO %02d  SCATTER %02d  LANCE %02d  SIDE %02d  GRENADE %02d\nBUILD // %s\nFINAL // %s\n%s\nRECORD %06d  •  BEST TIME %02d:%02d" % [
 		int(summary.get("score", 0)), elapsed_seconds / 60, elapsed_seconds % 60,
 		int(summary.get("kills", 0)), int(summary.get("total_damage", 0)), int(summary.get("damage_received", 0)), int(summary.get("headshots", 0)), float(summary.get("headshot_rate", 0.0)) * 100.0,
 		_weapon_display_name(StringName(summary.get("most_used_weapon", &"rifle"))), boss_seconds / 60, boss_seconds % 60, int(summary.get("highest_combo", 0)), int(summary.get("roll_evades", 0)),
 		int(weapon_kills.get(&"rifle", 0)), int(weapon_kills.get(&"shotgun", 0)), int(weapon_kills.get(&"sniper", 0)), int(weapon_kills.get(&"pistol", 0)), int(summary.get("grenade_kills", 0)),
 		build_text,
 		final_text,
+		event_text,
 		int(summary.get("best_score", 0)), best_seconds / 60, best_seconds % 60,
 	]
 	primary_button.text = "REPLAY SURVIVAL"
@@ -422,6 +426,25 @@ func show_survival_settlement(summary: Dictionary) -> void:
 	secondary_button.visible = true
 	audio_settings.visible = false
 	_show_state_overlay()
+
+
+func _survival_event_summary(summary: Dictionary) -> String:
+	var history: Array = summary.get("event_history", []) as Array
+	if history.is_empty():
+		return "EVENTS // NONE"
+	var parts: Array[String] = []
+	for record_value in history:
+		var record: Dictionary = record_value
+		var status := str(record.get("status", "unknown")).to_upper()
+		parts.append("%s [%s]" % [str(record.get("display_name", record.get("event_id", "EVENT"))), status])
+	var supply_names: Array[String] = []
+	for supply_value in summary.get("supplies", []) as Array:
+		supply_names.append(str(supply_value).to_upper())
+	var supply_text := "NONE" if supply_names.is_empty() else ", ".join(supply_names)
+	return "EVENTS %d // %s\nBOUNTIES %d  •  REINFORCEMENTS %d  •  SUPPLIES %s" % [
+		history.size(), "  •  ".join(parts),
+		int(summary.get("bounty_successes", 0)), int(summary.get("reinforcement_successes", 0)), supply_text,
+	]
 
 
 func _weapon_display_name(weapon_id: StringName) -> String:

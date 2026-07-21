@@ -8,7 +8,7 @@ BigShot is an original Godot 4.x 2D side-scrolling arcade-shooter prototype. It 
 godot --path /Users/darkeryi/Documents/BigShot
 ```
 
-The project opens on a mode selector. Choose `1` for the 20,000 px arcade mission or `2` to open the survival-map selector. Survival offers the original open industrial district and the tighter `SUBLEVEL-09` underground transport station; both share the same ten-wave lifecycle, waves 2/4/6/8 upgrade choices, existing four enemy roles, and the three-phase Iron Tempest finale.
+The project opens on a mode selector. Choose `1` for the 20,000 px arcade mission or `2` to open the survival-map selector. Survival offers the original open industrial district and the tighter `SUBLEVEL-09` underground transport station; both share the same ten-wave lifecycle, waves 2/4/6/8 upgrade choices, up to two run-local field events on waves 3/5/7, existing four enemy roles, and the three-phase Iron Tempest finale.
 
 ## Controls
 
@@ -33,7 +33,7 @@ The project opens on a mode selector. Choose `1` for the 20,000 px arcade missio
 ./scripts/verify_prototype.sh
 ```
 
-This command runs all prior PVE gates plus mode/map-selection loading, both maps' complete ten-wave lifecycle, the three-wave prerequisite, elite/Boss milestones, map-local death reset, upgrade isolation, steam-hazard behavior, local-record saving, real-weapon survival playthroughs, sprint-jump/roll/grenade compatibility, capped spawning, and the final headless runtime check. `scripts/tools/capture_frame.gd` and `scripts/tools/capture_survival_map.gd` remain available for graphical capture.
+This command runs all prior PVE gates plus mode/map-selection loading, both maps' complete ten-wave lifecycle, the three-wave prerequisite, elite/Boss milestones, deterministic supply/bounty/reinforcement event scenarios, map-local death reset, upgrade/event isolation, steam-hazard behavior, local-record saving, real-weapon survival playthroughs, sprint-jump/roll/grenade compatibility, capped spawning, and the final headless runtime check. `scripts/tools/capture_frame.gd` and `scripts/tools/capture_survival_map.gd` remain available for graphical capture.
 
 ## Scope
 

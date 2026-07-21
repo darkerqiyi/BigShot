@@ -18,6 +18,9 @@ func _run() -> void:
 			strategy = argument.trim_prefix("--strategy=")
 	var game := SurvivalScene.instantiate()
 	game.set_meta("survival_upgrade_seed", 1337 if strategy == "mixed" else 7331)
+	# This long-running baseline measures the pre-event weapon/pacing contract.
+	# Event behavior has a separate deterministic suite with explicit opt-in.
+	game.set_meta("survival_events_enabled", false)
 	root.add_child(game)
 	current_scene = game
 	for _frame in range(6):
