@@ -1,6 +1,6 @@
 # BigShot
 
-BigShot is an original Godot 4.x 2D side-scrolling arcade-shooter prototype. It uses project-authored code plus layered procedural pixel visuals for the player, four held weapons, four enemy roles, combat effects, a complete fantasy-tech environment, and the three-form Iron Tempest industrial Boss. Reference games inform pacing principles only.
+BigShot is an original Godot 4.7 2D side-scrolling arcade-shooter prototype. It uses project-authored code plus layered procedural pixel visuals for the player, four held weapons, four enemy roles, combat effects, a complete fantasy-tech environment, and the three-form Iron Tempest industrial Boss. Reference games inform pacing principles only.
 
 ## Play
 
@@ -38,3 +38,4 @@ This command runs all prior PVE gates plus mode/map-selection loading, both maps
 ## Scope
 
 The current build contains one complete PVE mission and one independent ten-wave survival mode with two configured maps and run-local upgrades; it is not a production-ready content architecture. It intentionally omits crouching, general checkpoints, online play, and permanent progression. Survival saves only highest score and best time locally with `ConfigFile`; all upgrades reset on death/exit and never modify PVE. The pixel UI, portrait, layered player/four weapons, assault/gunner/shield/elite visuals, Iron Tempest Boss, combat effects, both survival environments, music, and semantic audio cues are original project-authored procedural assets suitable for continued prototype iteration. See `VISUAL_STYLE.md` and `docs/AUDIO_SOURCES.md`.
+The current build contains one complete PVE mission and one independent base ten-wave survival mode（Roguelike）; it is not a production-ready content architecture. It intentionally omits crouching, general checkpoints, online play, and Roguelite/progression systems. Survival saves only highest score and best time locally with `ConfigFile`. The pixel UI, portrait, layered player/four weapons, assault/gunner/shield/elite visuals, Iron Tempest Boss, combat effects, PVE environment, survival arena, music, and semantic audio cues are original project-authored procedural assets suitable for continued prototype iteration. See `VISUAL_STYLE.md` and `docs/AUDIO_SOURCES.md`.
