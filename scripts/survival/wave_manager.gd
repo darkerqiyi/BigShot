@@ -57,9 +57,6 @@ var _debug_resume_state := -1
 var _debug_resume_countdown := 0.0
 var _fast_start_requested := false
 var _event_hold_requested := false
-var _event_modifiers_active := false
-var _event_base_active_limit := 0
-var _event_base_spawn_interval := 0.0
 
 
 func configure(waves: Array[Dictionary], active_limit: int = 6) -> void:
@@ -112,9 +109,6 @@ func reset_run() -> void:
 	_wave_completion_locked = false
 	_fast_start_requested = false
 	_event_hold_requested = false
-	_event_modifiers_active = false
-	_event_base_active_limit = 0
-	_event_base_spawn_interval = 0.0
 	_debug_resume_state = -1
 	_debug_resume_countdown = 0.0
 
@@ -155,42 +149,6 @@ func resume_after_event() -> bool:
 		return false
 	_begin_rest(post_upgrade_intermission_duration)
 	return true
-
-
-func enqueue_event_enemy(kind: String, side: String = "far", priority: bool = true) -> int:
-	if state not in [State.SPAWNING, State.ACTIVE]:
-		return -1
-	var ticket := _next_ticket
-	_next_ticket += 1
-	var entry := {"ticket": ticket, "kind": kind, "side": side}
-	if priority:
-		_pending.push_front(entry)
-	else:
-		_pending.append(entry)
-	_emit_counters()
-	return ticket
-
-
-func apply_event_spawn_modifiers(interval_multiplier: float, active_bonus: int) -> void:
-	if state not in [State.SPAWNING, State.ACTIVE] or _event_modifiers_active:
-		return
-	_event_modifiers_active = true
-	_event_base_active_limit = max_active_enemies
-	_event_base_spawn_interval = spawn_interval
-	max_active_enemies = maxi(max_active_enemies + active_bonus, 1)
-	spawn_interval = maxf(spawn_interval * clampf(interval_multiplier, 0.5, 1.0), 0.01)
-	_emit_counters()
-
-
-func clear_event_spawn_modifiers() -> void:
-	if not _event_modifiers_active:
-		return
-	max_active_enemies = _event_base_active_limit
-	spawn_interval = _event_base_spawn_interval
-	_event_modifiers_active = false
-	_event_base_active_limit = 0
-	_event_base_spawn_interval = 0.0
-	_emit_counters()
 
 
 func debug_request_upgrade() -> bool:
@@ -326,7 +284,6 @@ func _begin_next_wave() -> void:
 		_finish_run()
 		return
 	current_wave += 1
-	clear_event_spawn_modifiers()
 	_wave_completion_locked = false
 	_fast_start_requested = false
 	_event_hold_requested = false
@@ -423,7 +380,6 @@ func _complete_current_wave() -> void:
 	_wave_completion_locked = true
 	completed_waves.append(current_wave)
 	wave_completed.emit(current_wave)
-	clear_event_spawn_modifiers()
 	if current_wave >= total_waves:
 		_finish_run()
 		return

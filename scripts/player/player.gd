@@ -803,6 +803,14 @@ func add_grenades(amount: int) -> void:
 	grenade_count_changed.emit(grenade_count, runtime_grenade_capacity)
 
 
+func restore_stamina_to_full() -> void:
+	if not alive:
+		return
+	current_stamina = runtime_max_stamina
+	exhausted = false
+	stamina_regen_delay_remaining = 0.0
+
+
 func _flash_hurt() -> void:
 	visual.play_hurt()
 

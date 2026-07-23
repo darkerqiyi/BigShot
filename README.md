@@ -33,7 +33,7 @@ The project opens on a mode selector. Choose `1` for the 20,000 px arcade missio
 ./scripts/verify_prototype.sh
 ```
 
-This command runs all prior PVE gates plus mode/map-selection loading, both maps' complete ten-wave lifecycle, the three-wave prerequisite, elite/Boss milestones, deterministic supply/bounty/reinforcement event scenarios, map-local death reset, upgrade/event isolation, steam-hazard behavior, local-record saving, real-weapon survival playthroughs, sprint-jump/roll/grenade compatibility, capped spawning, and the final headless runtime check. `scripts/tools/capture_frame.gd` and `scripts/tools/capture_survival_map.gd` remain available for graphical capture.
+This command runs all prior PVE gates plus mode/map-selection loading, both maps' complete ten-wave lifecycle, the three-wave prerequisite, elite/Boss milestones, deterministic Supply Drop scheduling and resource-choice scenarios, map-local death reset, upgrade/event isolation, steam-hazard behavior, local-record saving, real-weapon survival playthroughs, sprint-jump/roll/grenade compatibility, capped spawning, and the final headless runtime check. `scripts/tools/capture_frame.gd` and `scripts/tools/capture_survival_map.gd` remain available for graphical capture.
 
 ## Scope
 

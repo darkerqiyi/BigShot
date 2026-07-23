@@ -441,9 +441,12 @@ func _survival_event_summary(summary: Dictionary) -> String:
 	for supply_value in summary.get("supplies", []) as Array:
 		supply_names.append(str(supply_value).to_upper())
 	var supply_text := "NONE" if supply_names.is_empty() else ", ".join(supply_names)
-	return "EVENTS %d // %s\nBOUNTIES %d  •  REINFORCEMENTS %d  •  SUPPLIES %s" % [
+	return "EVENTS %d // %s\nSUPPLY WAVE %d  •  CHOICE %s  •  HP +%d  •  MAGS %d  •  GRENADES +%d" % [
 		history.size(), "  •  ".join(parts),
-		int(summary.get("bounty_successes", 0)), int(summary.get("reinforcement_successes", 0)), supply_text,
+		int(summary.get("supply_wave", 0)), supply_text,
+		int(summary.get("supply_health_restored", 0)),
+		int(summary.get("supply_magazines_refilled", 0)),
+		int(summary.get("supply_grenades_added", 0)),
 	]
 
 

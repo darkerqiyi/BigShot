@@ -76,8 +76,9 @@ func open_supply(options: Array[Dictionary]) -> void:
 		card.disabled = index >= supply_options.size()
 		if index < supply_options.size():
 			var option: Dictionary = supply_options[index]
-			card.text = "%d\n%s\n\n%s\n\n%s" % [
+			card.text = "%d  %s\n%s\n\n%s\n\n%s" % [
 				index + 1,
+				str(option.get("icon", "■")),
 				str(option.get("display_name", "SUPPLY")),
 				str(option.get("description", "")),
 				str(option.get("preview", "")),
@@ -101,6 +102,10 @@ func confirm_supply(option_id: StringName) -> void:
 
 
 func close_supply() -> void:
+	for card in supply_cards:
+		card.release_focus()
+		card.disabled = true
+		card.scale = Vector2.ONE
 	supply_root.visible = false
 	supply_locked = false
 	supply_options.clear()

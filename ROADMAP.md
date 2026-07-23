@@ -268,18 +268,17 @@ Status: **Pass for automated lifecycle, collision, hazard, render, and regressio
 
 ### Run-local random events and supply choices
 
-Status: **Pass for automated scheduling, lifecycle, two-map, and PVE-isolation gates; human event pacing remains Partial** (2026-07-21).
+Status: **Phase-one Pass for automated scheduling, supply lifecycle, two-map, movement-lock, and PVE-isolation gates; human event pacing remains Partial** (2026-07-21).
 
-- `scripts/survival/survival_event_data.gd` owns three map/wave/weight/duration/reward/cooldown definitions. `SurvivalEventDirector` builds a seeded two-event maximum schedule across waves 3/5/7, prevents duplicate event types, owns the one-shot result ledger, and exposes debug force/expire/snapshot APIs.
-- Supply Drop holds WaveManager at a narrow event-resolution seam after all enemies are gone. Its three cards show real HP/ammo/grenade before-and-after values; full resources become explicit score conversions rather than dead choices. Selection resumes the existing two-second pre-wave rest and never enters the upgrade stack pool.
-- Elite Bounty adds one existing elite through WaveManager's bounded spawn queue, starts its 26-second timer only when the marked target actually spawns, and resolves every damage source through the existing death signal. Success grants 750 score plus one small resource; timeout removes only the marker and never blocks wave completion.
-- Emergency Reinforcements runs for at most 24 seconds, temporarily changes spawn interval to 75%, raises the active cap by one, and queues at most one existing elite. Timeout survival or clearing the wave grants 600 score plus one small resource; base spawn values are restored from captured wave values.
-- The compact event panel and supply cards remain below the authoritative HUD and upgrade layer. Pausing freezes Director time; upgrade selection hides event UI; event resolution suspends map hazards; Boss start/death/restart/menu exit clear all target IDs, timers, spawn modifiers, and temporary UI.
-- Settlement/failure summaries include event name/status, successful bounty/reinforcement counts, and acquired supply types. No EventDirector is created in PVE, and event-disabled survival retains the original ten-wave behavior.
+- `scripts/survival/survival_event_data.gd` currently registers only `supply_drop`. `SurvivalEventDirector` owns a seeded one-event schedule on one of waves 3/5/7 and explicit IDLE/PENDING/ACTIVE/RESOLVING/COOLDOWN states; later event types are intentionally outside this phase.
+- Supply Drop holds WaveManager only after every enemy is gone. Medical restores 30% max health, Weapon refills all four current magazines, and Tactical adds one bounded grenade plus full stamina. Full resources become explicit score conversions, so every card still has value.
+- The supply event replaces that wave's ordinary field cache rather than stacking with it. Selection then resumes the existing two-second rest; it never enters the Roguelite upgrade pool and cannot overlap upgrades on waves 2/4/6/8 or the wave-10 Boss.
+- Supply and upgrade selections acquire separate reasons through one paired control-lock registry. Pause, death, restart, menu exit, and scene reload clear UI focus and runtime state without directly competing over player movement. Sublevel steam remains suspended while WaveManager is in event resolution.
+- Settlement/failure summaries include trigger wave, chosen supply, actual health restored, magazines refilled, and grenades added. No EventDirector is created in PVE, and event-disabled survival retains the original ten-wave behavior.
 
 Current acceptance evidence:
 
-- `survival_events_test.gd` covers disabled scheduling, forced supply choice, bounty success and timeout failure, emergency spawn pressure, exactly two distinct seeded events, two complete ten-wave maps, no event/upgrade overlap, event-death restart, Boss cleanup, settlement statistics, and PVE isolation.
+- `survival_events_test.gd` covers deterministic single-event scheduling, debug forcing, three resource choices, full-resource replacements, mouse/digit input, pause/double-select guards, post-event Sublevel movement, event-death restart, two complete ten-wave maps, no upgrade overlap, Boss cleanup, settlement statistics, and PVE isolation.
 - Existing `survival_maps_test.gd` remains green with events disabled under its legacy test metadata, proving the new seam does not alter the original two-map ten-wave contract.
 
 ### Phase 2 — Shooting, ballistics, and damage
