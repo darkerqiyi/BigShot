@@ -20,9 +20,16 @@ func _run() -> void:
 		await process_frame
 		_expect(menu.get_node_or_null("Center/Panel/Content/PVE") != null, "PVE mode entry is missing")
 		_expect(menu.get_node_or_null("Center/Panel/Content/Survival") != null, "survival mode entry is missing")
+		_expect(menu.get_node_or_null("Center/Panel/Content/Settings") != null, "settings entry is missing")
+		_expect(menu.get_node_or_null("Center/Panel/Content/Controls") != null, "controls entry is missing")
 		_expect(menu.get_node_or_null("MapCenter/Panel/Content/Cards/Industrial/Content/Start") != null, "industrial survival map card is missing")
 		_expect(menu.get_node_or_null("MapCenter/Panel/Content/Cards/Sublevel/Content/Start") != null, "Sublevel-09 survival map card is missing")
+		_expect(menu.title_center.visible and not menu.get_node("Center").visible, "title screen did not precede the main menu")
+		menu._dismiss_title()
 		_expect(menu.pve_button.has_focus(), "mode selection did not focus the PVE entry")
+		menu._show_controls()
+		_expect(menu.info_center.visible and "RIGHT MOUSE" in menu.info_body.text, "controls page is missing current combat abilities")
+		menu._hide_info()
 		menu._show_map_select()
 		_expect(menu.map_center.visible and not menu.get_node("Center").visible, "survival map selector did not replace the operation selector")
 		_expect(menu.industrial_button.has_focus(), "survival map selector did not focus its first card")
@@ -39,7 +46,7 @@ func _expect(condition: bool, message: String) -> void:
 
 func _finish() -> void:
 	if failures.is_empty():
-		print("MODE_SELECT_PASS project boots to PVE plus an accessible two-map survival selector")
+		print("MODE_SELECT_PASS title, main menu, settings/controls and two-map survival selector are accessible")
 		quit(0)
 	else:
 		for failure in failures:

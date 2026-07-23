@@ -17,6 +17,9 @@ static func all_events() -> Array[Dictionary]:
 			"cooldown_waves": 1,
 			"incompatible_states": [&"upgrade_selection", &"boss", &"complete", &"stopped"],
 			"timing": &"post_wave",
+			"blocks_wave_start": true,
+			"pauses_combat": true,
+			"debug_force_enabled": true,
 		},
 		{
 			"event_id": &"elite_bounty",
@@ -31,6 +34,9 @@ static func all_events() -> Array[Dictionary]:
 			"cooldown_waves": 1,
 			"incompatible_states": [&"upgrade_selection", &"boss", &"complete", &"stopped"],
 			"timing": &"wave_start",
+			"blocks_wave_start": false,
+			"pauses_combat": false,
+			"debug_force_enabled": true,
 		},
 		{
 			"event_id": &"emergency_reinforcements",
@@ -45,6 +51,9 @@ static func all_events() -> Array[Dictionary]:
 			"cooldown_waves": 1,
 			"incompatible_states": [&"upgrade_selection", &"boss", &"complete", &"stopped"],
 			"timing": &"wave_start",
+			"blocks_wave_start": false,
+			"pauses_combat": false,
+			"debug_force_enabled": true,
 		},
 	]
 

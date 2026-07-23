@@ -146,6 +146,7 @@ func _build_ui() -> void:
 		button.add_theme_font_size_override("font_size", 18)
 		button.add_theme_constant_override("outline_size", 2)
 		button.pressed.connect(_choose.bind(index))
+		button.mouse_entered.connect(button.grab_focus)
 		cards.append(button)
 		row.add_child(button)
 	hint_label = Label.new()

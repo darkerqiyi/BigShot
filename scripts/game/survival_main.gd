@@ -15,6 +15,20 @@ const BountyMarkerScript := preload("res://scripts/survival/bounty_marker.gd")
 const WeaponCatalogScript := preload("res://scripts/weapons/weapon_catalog.gd")
 
 const SPAWN_PROTECTION_TIME := 0.48
+const SUPPLY_CONFIG := {
+	"medical_fraction": 0.30,
+	"grenade_amount": 1,
+	"medical_score": 400,
+	"weapon_score": 350,
+	"tactical_score": 300,
+}
+const EVENT_REWARD_CONFIG := {
+	"bounty_score": 750,
+	"reinforcement_score": 600,
+	"medical": 10,
+	"ammo_floor": 0.35,
+	"grenades": 1,
+}
 
 var wave_manager: SurvivalWaveManager
 var highest_combo := 0
@@ -41,9 +55,10 @@ var map_hazard_root: Node2D
 var map_hazards: Array[Node] = []
 var spawn_validation_result: Dictionary = {}
 var _spawn_positions: Dictionary = {}
+var _pending_supply_options: Array[Dictionary] = []
+var _control_locks: Dictionary = {}
 var _pending_bounty_ticket := -1
 var _bounty_target_id := 0
-var _pending_supply_options: Array[Dictionary] = []
 var _last_counter_snapshot := {
 	"wave": 0,
 	"total": 3,
@@ -89,6 +104,7 @@ func _ready() -> void:
 	var waves := SurvivalWaveData.phase_a_waves() if bool(get_meta("survival_phase_a_test", false)) else SurvivalWaveData.full_waves()
 	waves = _adapt_waves_for_map(waves)
 	wave_manager.configure(waves, maxi(6 + int(map_config.get("active_limit_offset", 0)), 1))
+	wave_manager.initial_countdown = 3.0
 	if not bool(get_meta("survival_phase_a_test", false)):
 		wave_manager.configure_upgrades([2, 4, 6, 8])
 	if bool(get_meta("survival_test_mode", false)):
@@ -142,6 +158,24 @@ func _ready() -> void:
 	hud.show_banner(str(map_config.get("display_name", "SURVIVAL PROTOCOL ONLINE")), Color("55e39a"), false, 1.35)
 	sfx.play_music(StringName(map_config.get("music", &"level")), 0.28)
 	wave_manager.start_run()
+
+
+func begin_product_intro(map_name: String, objective: String, countdown: float = 3.0) -> void:
+	_product_intro_token += 1
+	var token := _product_intro_token
+	_acquire_player_control_lock(&"product_intro")
+	player.cancel_transient_actions()
+	hud.show_banner(map_name, Color(0.35, 0.9, 0.82, 1.0), true)
+	hud.show_objective_update(objective, maxf(countdown, 1.0))
+	var remaining := maxi(int(ceil(countdown)), 1)
+	while remaining > 0 and token == _product_intro_token:
+		hud.show_banner("WAVE PROTOCOL IN %d" % remaining, Color(1.0, 0.82, 0.34, 1.0), true)
+		await get_tree().create_timer(1.0, false).timeout
+		remaining -= 1
+	if token != _product_intro_token:
+		return
+	_release_player_control_lock(&"product_intro")
+	hud.show_banner("SURVIVE!", Color(0.38, 1.0, 0.68, 1.0), false, 0.45)
 
 
 func _validate_initial_player_spawn() -> void:
@@ -336,7 +370,7 @@ func _prepare_event_for_wave(wave_number: int) -> void:
 	if event_director == null or wave_number == 10:
 		return
 	var definition := event_director.get_scheduled_event(wave_number)
-	if definition.is_empty():
+	if definition.is_empty() or StringName(definition.get("timing", &"")) != &"wave_start":
 		return
 	var event_id := StringName(definition.get("event_id", &""))
 	match event_id:
@@ -348,11 +382,8 @@ func _prepare_event_for_wave(wave_number: int) -> void:
 			if event_director.begin_event(definition, wave_number):
 				wave_manager.apply_event_spawn_modifiers(0.75, 1)
 				wave_manager.enqueue_event_enemy("elite", "far", false)
-				event_overlay.show_event(definition)
+				event_overlay.show_event(definition, "SURVIVE THE ACCELERATED DEPLOYMENT")
 				hud.show_banner("EMERGENCY REINFORCEMENTS", Color("ff9f43"), false, 0.9)
-		&"supply_drop":
-			# Supply choice opens only after the wave is fully clear.
-			pass
 
 
 func _on_spawn_warning_requested(ticket: int, kind: String, side: String, warning_time: float) -> void:
@@ -393,7 +424,7 @@ func _activate_bounty_target(enemy: Node) -> void:
 	marker.position = Vector2(0.0, -70.0) / enemy.scale
 	marker.scale = Vector2.ONE / enemy.scale
 	enemy.add_child(marker)
-	event_overlay.show_event(definition)
+	event_overlay.show_event(definition, "DESTROY THE MARKED ELITE")
 
 
 func _activate_spawned_enemy(instance_id: int) -> void:
@@ -480,12 +511,14 @@ func _on_survival_upgrade_requested(completed_wave: int) -> void:
 	for grenade in grenades.get_children():
 		grenade.queue_free()
 	player.cancel_transient_actions()
-	player.controls_enabled = false
+	_acquire_player_control_lock(&"upgrade_selection")
 	if event_director != null:
 		event_director.set_suspended(true)
 	var candidates := upgrade_manager.generate_candidates(3)
 	if candidates.is_empty():
-		player.controls_enabled = true
+		_release_player_control_lock(&"upgrade_selection")
+		if event_director != null:
+			event_director.set_suspended(false)
 		wave_manager.resume_after_upgrade()
 		return
 	upgrade_overlay.open(candidates)
@@ -506,7 +539,7 @@ func _on_survival_upgrade_chosen(upgrade_id: StringName) -> void:
 		return
 	upgrade_overlay.close()
 	hud.crosshair.visible = true
-	player.controls_enabled = true
+	_release_player_control_lock(&"upgrade_selection")
 	if event_director != null:
 		event_director.set_suspended(false)
 	wave_manager.resume_after_upgrade()
@@ -562,7 +595,7 @@ func _on_survival_rest_started(completed_wave: int, duration: float) -> void:
 	_clear_hostile_dangers()
 	for grenade in grenades.get_children():
 		grenade.queue_free()
-	if completed_wave in [3, 5, 7, 9]:
+	if completed_wave in [3, 5, 7, 9] and not _supply_resolved_on_wave(completed_wave):
 		var health_supply := int({3: 12, 5: 24, 7: 18, 9: 30}[completed_wave])
 		var ammo_floor := float({3: 0.50, 5: 0.70, 7: 0.60, 9: 0.82}[completed_wave])
 		var grenades_supply := int({3: 1, 5: 2, 7: 1, 9: 3}[completed_wave])
@@ -578,6 +611,15 @@ func _on_survival_rest_started(completed_wave: int, duration: float) -> void:
 		hud.show_banner("WAVE CLEAR // REST %.0f SEC" % duration, Color("55e39a"), false, 0.9)
 
 
+func _supply_resolved_on_wave(wave_number: int) -> bool:
+	if event_director == null:
+		return false
+	for record in event_director.get_history():
+		if StringName(record.get("event_id", &"")) == &"supply_drop" and int(record.get("wave", 0)) == wave_number and StringName(record.get("status", &"")) == &"success":
+			return true
+	return false
+
+
 func _on_survival_wave_completed(wave_number: int) -> void:
 	_clear_hostile_dangers()
 	if event_director != null:
@@ -585,22 +627,26 @@ func _on_survival_wave_completed(wave_number: int) -> void:
 			_complete_reinforcement_event()
 		elif event_director.is_active(&"elite_bounty"):
 			_fail_bounty_event("TARGET ESCAPED")
-		var scheduled := event_director.get_scheduled_event(wave_number)
-		if StringName(scheduled.get("event_id", &"")) == &"supply_drop" and wave_manager.request_event_hold():
-			call_deferred("_open_supply_event", scheduled, wave_number)
+		var pending := event_director.mark_pending(wave_number, StringName(run_state))
+		if StringName(pending.get("event_id", &"")) == &"supply_drop" and wave_manager.request_event_hold():
+			call_deferred("_open_supply_event", wave_number)
+		elif not pending.is_empty():
+			event_director.cancel_active("WAVE HOLD REJECTED")
 	if survival_balance_telemetry != null:
 		survival_balance_telemetry.complete_wave(wave_number, _run_elapsed)
 
 
-func _open_supply_event(definition: Dictionary, wave_number: int) -> void:
+func _open_supply_event(wave_number: int) -> void:
 	if event_director == null or event_overlay == null or run_state in ["dead", "complete"]:
+		if event_director != null:
+			event_director.cancel_active("RUN NOT SAFE")
 		return
-	if wave_manager.get_state_name() != &"event_resolution" or not event_director.begin_event(definition, wave_number):
+	if wave_manager.get_state_name() != &"event_resolution" or event_director.pending_wave != wave_number or not event_director.begin_pending():
 		wave_manager.resume_after_event()
 		return
 	run_state = "event_selection"
 	player.cancel_transient_actions()
-	player.controls_enabled = false
+	_acquire_player_control_lock(&"supply_drop")
 	hud.crosshair.visible = false
 	_pending_supply_options = _build_supply_options()
 	event_overlay.open_supply(_pending_supply_options)
@@ -610,14 +656,14 @@ func _open_supply_event(definition: Dictionary, wave_number: int) -> void:
 func _build_supply_options() -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
 	var missing_health := maxi(player.runtime_max_health - player.health, 0)
-	var health_restore := mini(int(ceil(player.runtime_max_health * 0.30)), missing_health)
+	var health_restore := mini(int(ceil(player.runtime_max_health * float(SUPPLY_CONFIG["medical_fraction"]))), missing_health)
 	if health_restore > 0:
 		options.append({
 			"id": &"medical", "display_name": "MEDICAL SUPPLY", "description": "RESTORE 30% MAX HP",
-			"preview": "HP %d -> %d" % [player.health, player.health + health_restore], "amount": health_restore, "color": Color("55e39a"),
+			"preview": "HP %d -> %d" % [player.health, player.health + health_restore], "amount": health_restore, "color": Color("55e39a"), "icon": "+",
 		})
 	else:
-		options.append(_score_supply_option(&"medical_score", "MEDICAL DATA", 400))
+		options.append(_score_supply_option(&"medical_score", "MEDICAL DATA", int(SUPPLY_CONFIG["medical_score"])))
 	var ammo_full := true
 	for weapon_id in WeaponCatalogScript.ORDER:
 		if player.weapon_inventory.get_ammo_for(weapon_id) < int(WeaponCatalogScript.get_weapon(weapon_id)["magazine_size"]):
@@ -627,24 +673,37 @@ func _build_supply_options() -> Array[Dictionary]:
 		var current_max := int(player.weapon_inventory.get_current_data()["magazine_size"])
 		options.append({
 			"id": &"weapon", "display_name": "WEAPON SUPPLY", "description": "REFILL ALL MAGAZINES",
-			"preview": "CURRENT MAG %d -> %d" % [player.ammo, current_max], "color": Color("62d8ff"),
+			"preview": "CURRENT MAG %d -> %d" % [player.ammo, current_max], "color": Color("ffd35a"), "icon": "▣",
 		})
 	else:
-		options.append(_score_supply_option(&"weapon_score", "BALLISTIC DATA", 350))
-	if player.grenade_count < player.runtime_grenade_capacity:
+		options.append(_score_supply_option(&"weapon_score", "BALLISTIC DATA", int(SUPPLY_CONFIG["weapon_score"])))
+	var missing_grenades := maxi(player.runtime_grenade_capacity - player.grenade_count, 0)
+	var missing_stamina := maxf(player.runtime_max_stamina - player.current_stamina, 0.0)
+	if missing_grenades > 0 or missing_stamina > 0.01:
+		var tactical_description := "GRENADE +1 // FULL STAMINA"
+		if missing_grenades <= 0:
+			tactical_description = "RESTORE FULL STAMINA"
+		elif missing_stamina <= 0.01:
+			tactical_description = "GAIN 1 GRENADE"
 		options.append({
-			"id": &"tactical", "display_name": "TACTICAL SUPPLY", "description": "GAIN 1 GRENADE",
-			"preview": "GRENADES %d -> %d" % [player.grenade_count, mini(player.grenade_count + 1, player.runtime_grenade_capacity)], "color": Color("ff9f43"),
+			"id": &"tactical", "display_name": "TACTICAL SUPPLY", "description": tactical_description,
+			"preview": "GRENADE %d -> %d  •  STAMINA %d -> %d" % [
+				player.grenade_count,
+				mini(player.grenade_count + int(SUPPLY_CONFIG["grenade_amount"]), player.runtime_grenade_capacity),
+				int(round(player.current_stamina)),
+				int(round(player.runtime_max_stamina)),
+			],
+			"color": Color("62d8ff"), "icon": "◆",
 		})
 	else:
-		options.append(_score_supply_option(&"tactical_score", "TACTICAL DATA", 300))
+		options.append(_score_supply_option(&"tactical_score", "TACTICAL DATA", int(SUPPLY_CONFIG["tactical_score"])))
 	return options
 
 
 func _score_supply_option(option_id: StringName, label: String, points: int) -> Dictionary:
 	return {
 		"id": option_id, "display_name": label, "description": "RESOURCE FULL // CONVERT TO SCORE",
-		"preview": "SCORE +%d" % points, "score": points, "color": Color("ffd35a"),
+		"preview": "SCORE +%d" % points, "score": points, "color": Color("ffd35a"), "icon": "★",
 	}
 
 
@@ -659,19 +718,34 @@ func _on_supply_chosen(option_id: StringName) -> void:
 	if selected.is_empty():
 		return
 	var reward_type := option_id
+	var result := {
+		"health_restored": 0,
+		"magazines_refilled": 0,
+		"grenades_added": 0,
+	}
 	match option_id:
 		&"medical":
+			var before_health: int = player.health
 			player.apply_field_resupply(int(selected.get("amount", 0)), 0.0, 0)
+			result["health_restored"] = player.health - before_health
 		&"weapon":
+			for weapon_id in WeaponCatalogScript.ORDER:
+				var before_ammo: int = player.weapon_inventory.get_ammo_for(weapon_id)
+				var magazine_size := int(WeaponCatalogScript.get_weapon(weapon_id)["magazine_size"])
+				if before_ammo < magazine_size:
+					result["magazines_refilled"] = int(result["magazines_refilled"]) + 1
 			player.apply_field_resupply(0, 1.0, 0)
 		&"tactical":
-			player.add_grenades(1)
+			var before_grenades: int = player.grenade_count
+			player.add_grenades(int(SUPPLY_CONFIG["grenade_amount"]))
+			player.restore_stamina_to_full()
+			result["grenades_added"] = player.grenade_count - before_grenades
 		_:
 			score += int(selected.get("score", 0))
 			hud.set_score(score)
 			reward_type = &"score"
 	event_overlay.confirm_supply(option_id)
-	event_director.complete_active(reward_type, str(selected.get("display_name", "SUPPLY")))
+	event_director.complete_active(reward_type, str(selected.get("display_name", "SUPPLY")), result)
 	sfx.play_cue(&"ui_confirm")
 	var delay := 0.01 if bool(get_meta("survival_test_mode", false)) else 0.18
 	await get_tree().create_timer(delay, false).timeout
@@ -680,14 +754,25 @@ func _on_supply_chosen(option_id: StringName) -> void:
 	event_overlay.close_supply()
 	_pending_supply_options.clear()
 	hud.crosshair.visible = true
-	player.controls_enabled = true
+	_release_player_control_lock(&"supply_drop")
 	run_state = "survival_rest"
 	wave_manager.resume_after_event()
 
 
-func _on_survival_event_updated(_definition: Dictionary, remaining: float, _progress: float) -> void:
-	if event_overlay != null and not event_overlay.is_supply_open():
-		event_overlay.update_event(remaining)
+func _on_survival_event_updated(definition: Dictionary, remaining: float, _progress: float) -> void:
+	if event_overlay == null or event_overlay.is_supply_open():
+		return
+	var event_id := StringName(definition.get("event_id", &""))
+	var objective := ""
+	if event_id == &"elite_bounty":
+		var target := instance_from_id(_bounty_target_id) if _bounty_target_id != 0 else null
+		if target != null and is_instance_valid(target):
+			objective = "TARGET HP %d / %d" % [int(target.get("health")), int(target.get("max_health"))]
+		else:
+			objective = "DESTROY THE MARKED ELITE"
+	elif event_id == &"emergency_reinforcements":
+		objective = "SURGE ACTIVE // HOSTILES %02d" % wave_manager.get_alive_count()
+	event_overlay.update_event(remaining, objective)
 
 
 func _on_survival_event_timed_out(event_id: StringName) -> void:
@@ -709,32 +794,68 @@ func _complete_bounty_event() -> void:
 	if event_director == null or not event_director.is_active(&"elite_bounty"):
 		return
 	_clear_bounty_marker()
-	score += 750
+	var points := int(EVENT_REWARD_CONFIG["bounty_score"])
+	score += points
 	hud.set_score(score)
-	var reward := event_director.choose_small_supply()
-	_apply_small_event_supply(reward)
-	event_director.complete_active(reward, "TARGET ELIMINATED // SCORE +750")
+	var reward := _choose_effective_event_supply()
+	var result := _apply_small_event_supply(reward)
+	result["score_awarded"] = points + int(result.get("score_awarded", 0))
+	event_director.complete_active(reward, "TARGET ELIMINATED // SCORE +%d" % points, result)
 
 
 func _complete_reinforcement_event() -> void:
 	if event_director == null or not event_director.is_active(&"emergency_reinforcements"):
 		return
 	wave_manager.clear_event_spawn_modifiers()
-	score += 600
+	var points := int(EVENT_REWARD_CONFIG["reinforcement_score"])
+	score += points
 	hud.set_score(score)
-	var reward := event_director.choose_small_supply()
-	_apply_small_event_supply(reward)
-	event_director.complete_active(reward, "SURGE CONTAINED // SCORE +600")
+	var reward := _choose_effective_event_supply()
+	var result := _apply_small_event_supply(reward)
+	result["score_awarded"] = points + int(result.get("score_awarded", 0))
+	event_director.complete_active(reward, "SURGE CONTAINED // SCORE +%d" % points, result)
 
 
-func _apply_small_event_supply(reward: StringName) -> void:
+func _choose_effective_event_supply() -> StringName:
+	var available: Array[StringName] = []
+	if player.health < player.runtime_max_health:
+		available.append(&"medical")
+	var needs_ammo := false
+	for weapon_id in WeaponCatalogScript.ORDER:
+		var maximum := int(WeaponCatalogScript.get_weapon(weapon_id)["magazine_size"])
+		if player.weapon_inventory.get_ammo_for(weapon_id) < int(ceil(maximum * float(EVENT_REWARD_CONFIG["ammo_floor"]))):
+			needs_ammo = true
+			break
+	if needs_ammo:
+		available.append(&"weapon")
+	if player.grenade_count < player.runtime_grenade_capacity:
+		available.append(&"tactical")
+	return event_director.choose_small_supply(available) if not available.is_empty() else &"score"
+
+
+func _apply_small_event_supply(reward: StringName) -> Dictionary:
+	var result := {
+		"health_restored": 0,
+		"grenades_added": 0,
+		"ammo_refilled": false,
+	}
 	match reward:
 		&"medical":
-			player.apply_field_resupply(10, 0.0, 0)
+			var before_health: int = player.health
+			player.apply_field_resupply(int(EVENT_REWARD_CONFIG["medical"]), 0.0, 0)
+			result["health_restored"] = player.health - before_health
 		&"weapon":
-			player.apply_field_resupply(0, 0.35, 0)
+			player.apply_field_resupply(0, float(EVENT_REWARD_CONFIG["ammo_floor"]), 0)
+			result["ammo_refilled"] = true
 		&"tactical":
-			player.add_grenades(1)
+			var before_grenades: int = player.grenade_count
+			player.add_grenades(int(EVENT_REWARD_CONFIG["grenades"]))
+			result["grenades_added"] = player.grenade_count - before_grenades
+		&"score":
+			score += 200
+			hud.set_score(score)
+			result["score_awarded"] = 200
+	return result
 
 
 func _on_survival_event_finished(record: Dictionary) -> void:
@@ -761,6 +882,8 @@ func _on_survival_boss_requested(_wave_number: int) -> void:
 	_clear_hostile_dangers()
 	if event_director != null and event_director.is_active():
 		event_director.cancel_active("BOSS PROTOCOL OVERRIDE")
+	wave_manager.clear_event_spawn_modifiers()
+	_clear_bounty_marker()
 	if event_overlay != null:
 		event_overlay.clear_all()
 	_set_map_hazards_suspended(true)
@@ -812,8 +935,8 @@ func _on_enemy_died(enemy: Node, points: int) -> void:
 	if bool(enemy.get_meta("survival_death_counted", false)):
 		return
 	enemy.set_meta("survival_death_counted", true)
-	var instance_id := enemy.get_instance_id()
 	var weapon_id: StringName = enemy.get("last_damage_weapon_id")
+	var instance_id := enemy.get_instance_id()
 	super._on_enemy_died(enemy, points)
 	if instance_id == _bounty_target_id:
 		_complete_bounty_event()
@@ -848,8 +971,11 @@ func _on_player_died() -> void:
 		telemetry.record_death(player.global_position)
 	if survival_balance_telemetry != null:
 		survival_balance_telemetry.finish(&"death", _run_elapsed)
-	if event_director != null and event_director.is_active():
+	if event_director != null and event_director.get_state_name() in [&"pending", &"active", &"resolving"]:
 		event_director.cancel_active("OPERATIVE DOWN")
+	if wave_manager != null:
+		wave_manager.clear_event_spawn_modifiers()
+	_clear_bounty_marker()
 	var failure_summary := _build_survival_summary(wave_manager.current_wave)
 	if upgrade_manager != null:
 		upgrade_manager.reset_run()
@@ -875,9 +1001,12 @@ func _on_survival_run_completed() -> void:
 		telemetry.finish(&"complete")
 	if survival_balance_telemetry != null:
 		survival_balance_telemetry.finish(&"complete", _run_elapsed)
-	player.controls_enabled = false
-	if event_director != null and event_director.is_active():
+	_acquire_player_control_lock(&"run_complete")
+	if event_director != null and event_director.get_state_name() in [&"pending", &"active", &"resolving"]:
 		event_director.cancel_active("RUN COMPLETE")
+	if wave_manager != null:
+		wave_manager.clear_event_spawn_modifiers()
+	_clear_bounty_marker()
 	_clear_hostile_dangers()
 	for grenade in grenades.get_children():
 		grenade.queue_free()
@@ -913,6 +1042,8 @@ func _build_survival_summary(reached_wave: int) -> Dictionary:
 	if boss_started >= 0.0:
 		boss_time = maxf(float(telemetry_snapshot.get("elapsed", _run_elapsed)) - boss_started, 0.0)
 	var summary := {
+		"map_id": map_id,
+		"map_name": str(map_config.get("display_name", "SURVIVAL BATTLEGROUND")),
 		"score": score,
 		"elapsed": _run_elapsed,
 		"reached_wave": reached_wave,
@@ -940,7 +1071,12 @@ func _build_survival_summary(reached_wave: int) -> Dictionary:
 
 func _clear_survival_runtime(include_boss: bool = true) -> void:
 	_set_map_hazards_suspended(true)
+	if wave_manager != null:
+		wave_manager.clear_event_spawn_modifiers()
 	_clear_bounty_marker()
+	_pending_supply_options.clear()
+	_control_locks.clear()
+	_sync_player_controls()
 	if event_overlay != null:
 		event_overlay.clear_all()
 	if damage_numbers != null:
@@ -1022,14 +1158,32 @@ func _restart_scene() -> void:
 
 
 func _on_quit_requested() -> void:
+	_on_menu_requested()
+
+
+func _prepare_survival_exit() -> void:
+	_product_intro_token += 1
 	if upgrade_manager != null:
 		upgrade_manager.reset_run()
 	if event_director != null:
 		event_director.reset_run()
 	if event_overlay != null:
 		event_overlay.clear_all()
+	if wave_manager != null:
+		wave_manager.clear_event_spawn_modifiers()
+	_clear_bounty_marker()
+	_control_locks.clear()
 	get_tree().paused = false
-	get_tree().change_scene_to_file("res://scenes/menu/mode_select.tscn")
+
+
+func _on_menu_requested() -> void:
+	_prepare_survival_exit()
+	_change_product_scene("res://scenes/menu/mode_select.tscn")
+
+
+func _on_map_select_requested() -> void:
+	_prepare_survival_exit()
+	_change_product_scene("res://scenes/menu/mode_select.tscn", {"show_map_select": true})
 
 
 func _on_pause_changed(paused: bool) -> void:
@@ -1044,3 +1198,19 @@ func debug_force_survival_event(event_id: StringName, wave: int) -> bool:
 
 func debug_expire_survival_event() -> bool:
 	return OS.is_debug_build() and event_director != null and event_director.debug_expire_active()
+
+
+func _acquire_player_control_lock(reason: StringName) -> void:
+	_control_locks[reason] = true
+	_sync_player_controls()
+
+
+func _release_player_control_lock(reason: StringName) -> void:
+	_control_locks.erase(reason)
+	_sync_player_controls()
+
+
+func _sync_player_controls() -> void:
+	if not is_instance_valid(player):
+		return
+	player.controls_enabled = player.alive and _control_locks.is_empty() and run_state not in ["dead", "complete"]

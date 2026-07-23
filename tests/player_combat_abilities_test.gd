@@ -263,16 +263,25 @@ func _test_grenade_physics_and_damage(game: Node) -> void:
 
 func _test_tutorial_and_supply_contract(game: Node) -> void:
 	var player = game.player
-	player.global_position.x = 650.0
-	game._process(0.0)
-	_expect(game._roll_tutorial_shown and game._active_ability_tutorial == &"roll" and game.hud.objective_label.text.contains("DOUBLE-TAP"), "safe opening did not present the roll tutorial")
+	var tutorial = game.tutorial_director
+	_expect(tutorial != null and tutorial.active and tutorial.get_debug_snapshot()["step"] == &"move", "first-run tutorial did not begin with movement")
+	for step in [&"move", &"jump", &"fire", &"switch", &"reload", &"sprint"]:
+		tutorial.complete_current(step)
+		await create_timer(0.20).timeout
+	_expect(tutorial.get_debug_snapshot()["step"] == &"roll" and game.hud.controls_label.text.contains("DOUBLE-TAP"), "tutorial did not progress to the compact roll instruction")
 	player.roll_started.emit(player.global_position, 1)
-	_expect(game._active_ability_tutorial == &"", "successful roll did not dismiss its tutorial")
-	player.global_position.x = 1800.0
-	game._process(0.0)
-	_expect(game._grenade_tutorial_shown and game._active_ability_tutorial == &"grenade" and game.hud.objective_label.text.contains("HOLD RMB"), "safe opening did not present the grenade tutorial")
+	await create_timer(0.20).timeout
+	_expect(tutorial.get_debug_snapshot()["step"] == &"grenade", "successful roll did not advance to the grenade instruction")
 	game._on_player_grenade_exploded(Vector2(-300, -300), 40.0, 1, 1.0)
-	_expect(game._active_ability_tutorial == &"", "first grenade explosion did not dismiss its tutorial")
+	await create_timer(0.20).timeout
+	_expect(tutorial.get_debug_snapshot()["step"] == &"headshot", "first grenade did not advance to the weak-point instruction")
+	tutorial.notify_action(&"headshot")
+	await create_timer(0.20).timeout
+	_expect(not tutorial.active, "headshot did not complete the first-run tutorial")
+	var settings := root.get_node_or_null("SettingsManager")
+	_expect(settings != null and bool(settings.get_value(&"experience", &"tutorial_complete", false)), "tutorial completion was not persisted")
+	if settings != null:
+		settings.set_value(&"experience", &"tutorial_complete", false)
 	player.grenade_count = 0
 	var grenade_pickup: Node
 	for pickup in game.get_tree().get_nodes_in_group("mission_pickups"):

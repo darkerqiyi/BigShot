@@ -256,6 +256,28 @@ if [[ -n "$filtered_errors" ]]; then
 fi
 grep "MODE_SELECT_PASS" "$LOG_DIR/mode_select.log"
 
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/product_flow_test.gd >"$LOG_DIR/product_flow.log" 2>&1; then
+	cat "$LOG_DIR/product_flow.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/product_flow.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "PRODUCT_FLOW_PASS" "$LOG_DIR/product_flow.log"
+
+if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/settings_system_test.gd >"$LOG_DIR/settings_system.log" 2>&1; then
+	cat "$LOG_DIR/settings_system.log" >&2
+	exit 1
+fi
+filtered_errors="$(grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR:" "$LOG_DIR/settings_system.log" | grep -v 'get_system_ca_certificates' | grep -v 'Condition "ret != noErr"' || true)"
+if [[ -n "$filtered_errors" ]]; then
+	printf '%s\n' "$filtered_errors" >&2
+	exit 1
+fi
+grep "SETTINGS_SYSTEM_PASS" "$LOG_DIR/settings_system.log"
+
 if ! "$GODOT_BIN" --headless --path "$ROOT" --script res://tests/survival_three_wave_test.gd >"$LOG_DIR/survival_three.log" 2>&1; then
 	cat "$LOG_DIR/survival_three.log" >&2
 	exit 1

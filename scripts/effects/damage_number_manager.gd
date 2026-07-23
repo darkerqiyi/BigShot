@@ -8,6 +8,7 @@ var _pool: Array[DamageNumber] = []
 var _active: Array[DamageNumber] = []
 var _serial := 0
 var dropped_visuals := 0
+var display_enabled := true
 
 
 func _ready() -> void:
@@ -19,6 +20,8 @@ func _ready() -> void:
 
 
 func show_result(target: Node, world_position: Vector2, result: Dictionary) -> bool:
+	if not display_enabled:
+		return false
 	if target == null or not is_instance_valid(target) or not _is_on_screen(world_position):
 		return false
 	var final_damage := int(result.get("final_damage", 0))

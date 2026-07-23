@@ -2,6 +2,8 @@ extends CanvasLayer
 
 signal restart_requested
 signal quit_requested
+signal menu_requested
+signal map_select_requested
 signal audio_adjust_requested(bus_name: StringName, delta_steps: int)
 signal audio_mute_requested(bus_name: StringName)
 signal ui_cue_requested(cue: StringName)
@@ -16,13 +18,14 @@ enum BossUIState {
 }
 
 const Style := preload("res://scripts/ui/pixel_ui_style.gd")
+const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 const SLOT_IDS: Array[StringName] = [&"rifle", &"shotgun", &"sniper", &"pistol"]
 const SLOT_NAMES := ["AUTO RIFLE", "SCATTERGUN", "RAIL LANCE", "SIDEARM"]
 const SLOT_SHORT_NAMES := ["AUTO", "SCATTER", "LANCE", "SIDE"]
 const SLOT_ICON_KINDS := ["rifle", "shotgun", "sniper", "pistol"]
 const SLOT_COLORS := [Style.GOLD, Color("ff6c3a"), Style.SHIELD, Style.HEALTH]
 const UI_SCALE_CHOICES := [80, 90, 100]
-const AUDIO_BUSES: Array[StringName] = [&"Master", &"Music", &"SFX"]
+const AUDIO_BUSES: Array[StringName] = [&"Master", &"Music", &"SFX", &"UI"]
 const CONTROLS_TEXT := "A/D MOVE  •  AA/DD ROLL  •  SPACE JUMP  •  MOUSE AIM  •  LMB/J FIRE  •  RMB GRENADE  •  1—4 WEAPONS  •  R RELOAD  •  ESC PAUSE"
 
 @onready var player_panel: PanelContainer = $PlayerPanel
@@ -89,26 +92,34 @@ const CONTROLS_TEXT := "A/D MOVE  •  AA/DD ROLL  •  SPACE JUMP  •  MOUSE A
 @onready var state_subtitle: Label = $StateOverlay/Center/MenuPanel/Content/Subtitle
 @onready var primary_button: Button = $StateOverlay/Center/MenuPanel/Content/Primary
 @onready var secondary_button: Button = $StateOverlay/Center/MenuPanel/Content/Secondary
+@onready var map_select_button: Button = $StateOverlay/Center/MenuPanel/Content/MapSelect
+@onready var settings_button: Button = $StateOverlay/Center/MenuPanel/Content/Settings
+@onready var controls_button: Button = $StateOverlay/Center/MenuPanel/Content/Controls
+@onready var main_menu_button: Button = $StateOverlay/Center/MenuPanel/Content/MainMenu
 @onready var audio_settings: VBoxContainer = $StateOverlay/Center/MenuPanel/Content/AudioSettings
 @onready var audio_value_labels := {
 	&"Master": $StateOverlay/Center/MenuPanel/Content/AudioSettings/MasterRow/Value,
 	&"Music": $StateOverlay/Center/MenuPanel/Content/AudioSettings/MusicRow/Value,
 	&"SFX": $StateOverlay/Center/MenuPanel/Content/AudioSettings/SFXRow/Value,
+	&"UI": $StateOverlay/Center/MenuPanel/Content/AudioSettings/UIRow/Value,
 }
 @onready var audio_mute_buttons := {
 	&"Master": $StateOverlay/Center/MenuPanel/Content/AudioSettings/MasterRow/Mute,
 	&"Music": $StateOverlay/Center/MenuPanel/Content/AudioSettings/MusicRow/Mute,
 	&"SFX": $StateOverlay/Center/MenuPanel/Content/AudioSettings/SFXRow/Mute,
+	&"UI": $StateOverlay/Center/MenuPanel/Content/AudioSettings/UIRow/Mute,
 }
 @onready var audio_minus_buttons := {
 	&"Master": $StateOverlay/Center/MenuPanel/Content/AudioSettings/MasterRow/Minus,
 	&"Music": $StateOverlay/Center/MenuPanel/Content/AudioSettings/MusicRow/Minus,
 	&"SFX": $StateOverlay/Center/MenuPanel/Content/AudioSettings/SFXRow/Minus,
+	&"UI": $StateOverlay/Center/MenuPanel/Content/AudioSettings/UIRow/Minus,
 }
 @onready var audio_plus_buttons := {
 	&"Master": $StateOverlay/Center/MenuPanel/Content/AudioSettings/MasterRow/Plus,
 	&"Music": $StateOverlay/Center/MenuPanel/Content/AudioSettings/MusicRow/Plus,
 	&"SFX": $StateOverlay/Center/MenuPanel/Content/AudioSettings/SFXRow/Plus,
+	&"UI": $StateOverlay/Center/MenuPanel/Content/AudioSettings/UIRow/Plus,
 }
 
 var boss_ui_state := BossUIState.HIDDEN
@@ -132,6 +143,7 @@ var _last_health := -1
 var _last_score := -1
 var _last_boss_phase := 0
 var _overlay_mode: StringName = &"none"
+var _overlay_parent_mode: StringName = &"none"
 var _controls_time_remaining := 4.0
 var _controls_persistent := false
 var _controls_hide_requested := false
@@ -142,6 +154,7 @@ var _current_ammo := 0
 var _current_magazine := 0
 var _ammo_reloading := false
 var _grenade_count := 3
+var _settings_menu: Control
 
 
 func _ready() -> void:
@@ -149,8 +162,12 @@ func _ready() -> void:
 	_apply_theme()
 	primary_button.pressed.connect(_on_primary_pressed)
 	secondary_button.pressed.connect(_on_secondary_pressed)
-	_connect_hover_cue(primary_button)
-	_connect_hover_cue(secondary_button)
+	map_select_button.pressed.connect(_on_map_select_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
+	controls_button.pressed.connect(_on_controls_pressed)
+	main_menu_button.pressed.connect(_on_main_menu_pressed)
+	for button in [primary_button, secondary_button, map_select_button, settings_button, controls_button, main_menu_button]:
+		_connect_hover_cue(button)
 	for bus_name in AUDIO_BUSES:
 		(audio_minus_buttons[bus_name] as Button).pressed.connect(_on_audio_step_pressed.bind(bus_name, -1))
 		(audio_plus_buttons[bus_name] as Button).pressed.connect(_on_audio_step_pressed.bind(bus_name, 1))
@@ -169,7 +186,10 @@ func _ready() -> void:
 
 
 func _connect_hover_cue(button: Button) -> void:
-	button.mouse_entered.connect(_on_ui_hover)
+	button.mouse_entered.connect(func() -> void:
+		button.grab_focus()
+		_on_ui_hover()
+	)
 	button.focus_entered.connect(_on_ui_hover)
 
 
@@ -388,8 +408,11 @@ func show_survival_failure(summary: Dictionary, damage_source: String) -> void:
 		_weapon_display_name(StringName(summary.get("most_used_weapon", &"rifle"))), damage_source.to_upper(), _survival_build_text, event_text,
 	]
 	primary_button.text = "RESTART SURVIVAL"
-	secondary_button.text = "RETURN TO MENU"
-	secondary_button.visible = true
+	secondary_button.visible = false
+	map_select_button.visible = true
+	settings_button.visible = false
+	controls_button.visible = false
+	main_menu_button.visible = true
 	audio_settings.visible = false
 	_show_state_overlay()
 
@@ -411,7 +434,8 @@ func show_survival_settlement(summary: Dictionary) -> void:
 	var final_text := _survival_parameter_text(summary.get("upgrade_final_modifiers", {}) as Dictionary)
 	var boss_seconds := int(round(float(summary.get("boss_time", 0.0))))
 	var event_text := _survival_event_summary(summary)
-	state_subtitle.text = "10 WAVES CLEARED  •  SCORE %06d  •  TIME %02d:%02d\nKILLS %03d  •  DAMAGE %05d  •  TAKEN %04d  •  HEADSHOTS %02d / %.0f%%\nMOST USED // %s  •  BOSS %02d:%02d  •  BEST COMBO %02d  •  ROLL EVADES %02d\nAUTO %02d  SCATTER %02d  LANCE %02d  SIDE %02d  GRENADE %02d\nBUILD // %s\nFINAL // %s\n%s\nRECORD %06d  •  BEST TIME %02d:%02d" % [
+	state_subtitle.text = "%s\n10 WAVES CLEARED  •  SCORE %06d  •  TIME %02d:%02d\nKILLS %03d  •  DAMAGE %05d  •  TAKEN %04d  •  HEADSHOTS %02d / %.0f%%\nMOST USED // %s  •  BOSS %02d:%02d  •  BEST COMBO %02d  •  ROLL EVADES %02d\nAUTO %02d  SCATTER %02d  LANCE %02d  SIDE %02d  GRENADE %02d\nBUILD // %s\nFINAL // %s\n%s\nRECORD %06d  •  BEST TIME %02d:%02d" % [
+		str(summary.get("map_name", "SURVIVAL BATTLEGROUND")),
 		int(summary.get("score", 0)), elapsed_seconds / 60, elapsed_seconds % 60,
 		int(summary.get("kills", 0)), int(summary.get("total_damage", 0)), int(summary.get("damage_received", 0)), int(summary.get("headshots", 0)), float(summary.get("headshot_rate", 0.0)) * 100.0,
 		_weapon_display_name(StringName(summary.get("most_used_weapon", &"rifle"))), boss_seconds / 60, boss_seconds % 60, int(summary.get("highest_combo", 0)), int(summary.get("roll_evades", 0)),
@@ -422,8 +446,11 @@ func show_survival_settlement(summary: Dictionary) -> void:
 		int(summary.get("best_score", 0)), best_seconds / 60, best_seconds % 60,
 	]
 	primary_button.text = "REPLAY SURVIVAL"
-	secondary_button.text = "RETURN TO MENU"
-	secondary_button.visible = true
+	secondary_button.visible = false
+	map_select_button.visible = true
+	settings_button.visible = false
+	controls_button.visible = false
+	main_menu_button.visible = true
 	audio_settings.visible = false
 	_show_state_overlay()
 
@@ -441,9 +468,21 @@ func _survival_event_summary(summary: Dictionary) -> String:
 	for supply_value in summary.get("supplies", []) as Array:
 		supply_names.append(str(supply_value).to_upper())
 	var supply_text := "NONE" if supply_names.is_empty() else ", ".join(supply_names)
-	return "EVENTS %d // %s\nBOUNTIES %d  •  REINFORCEMENTS %d  •  SUPPLIES %s" % [
+	var field_supply_text := "NO FIELD DROP"
+	if bool(summary.get("supply_triggered", false)):
+		field_supply_text = "DROP WAVE %d  •  CHOICE %s  •  HP +%d  •  MAGS %d  •  GRENADES +%d" % [
+			int(summary.get("supply_wave", 0)),
+			str(summary.get("supply_choice", &"none")).to_upper(),
+			int(summary.get("supply_health_restored", 0)),
+			int(summary.get("supply_magazines_refilled", 0)),
+			int(summary.get("supply_grenades_added", 0)),
+		]
+	return "EVENTS %d // %s\nBOUNTIES %d  •  SURGES %d  •  REWARDS %s\n%s" % [
 		history.size(), "  •  ".join(parts),
-		int(summary.get("bounty_successes", 0)), int(summary.get("reinforcement_successes", 0)), supply_text,
+		int(summary.get("bounty_successes", 0)),
+		int(summary.get("reinforcement_successes", 0)),
+		supply_text,
+		field_supply_text,
 	]
 
 
@@ -705,6 +744,10 @@ func show_death(boss_checkpoint: bool = false, damage_source: String = "UNKNOWN"
 	state_subtitle.text = "%s\nLAST HIT // %s  •  REDEPLOY 1.35s" % [retry_label, damage_source.to_upper()]
 	primary_button.text = "RESTART NOW"
 	secondary_button.visible = false
+	map_select_button.visible = false
+	settings_button.visible = false
+	controls_button.visible = false
+	main_menu_button.visible = true
 	audio_settings.visible = false
 	_show_state_overlay()
 
@@ -716,13 +759,17 @@ func show_settlement(final_score: int, remaining_health: int, summary: Dictionar
 	state_title.modulate = Style.HEALTH
 	var elapsed_seconds := int(round(float(summary.get("elapsed", 0.0))))
 	var time_text := "%02d:%02d" % [elapsed_seconds / 60, elapsed_seconds % 60]
-	state_subtitle.text = "IRON TEMPEST DEFEATED  •  RANK %s\nTIME %s  •  SCORE %06d\nKILLS %02d  •  ACCURACY %03d%%  •  HITS TAKEN %02d\nHP %03d" % [
+	state_subtitle.text = "%s\nIRON TEMPEST DEFEATED  •  RANK %s\nTIME %s  •  SCORE %06d\nKILLS %02d  •  ACCURACY %03d%%  •  HITS TAKEN %02d\nHP %03d" % [
+		str(summary.get("map_name", "IRON DISTRICT // ARCADE MISSION")),
 		str(summary.get("rank", "C")), time_text, final_score,
 		int(summary.get("kills", 0)), int(summary.get("accuracy", 0)), int(summary.get("damage_events", 0)), remaining_health,
 	]
 	primary_button.text = "REPLAY MISSION"
-	secondary_button.text = "EXIT GAME"
-	secondary_button.visible = true
+	secondary_button.visible = false
+	map_select_button.visible = false
+	settings_button.visible = false
+	controls_button.visible = false
+	main_menu_button.visible = true
 	audio_settings.visible = false
 	_show_state_overlay()
 
@@ -740,6 +787,10 @@ func toggle_pause() -> void:
 		primary_button.text = "CONTINUE"
 		secondary_button.text = "RESTART SURVIVAL" if survival_mode_enabled else "RESTART MISSION"
 		secondary_button.visible = true
+		map_select_button.visible = false
+		settings_button.visible = true
+		controls_button.visible = true
+		main_menu_button.visible = true
 		audio_settings.visible = true
 		_show_state_overlay()
 		get_tree().paused = true
@@ -799,6 +850,14 @@ func _on_primary_pressed() -> void:
 	ui_cue_requested.emit(&"ui_confirm")
 	if _overlay_mode == &"pause":
 		_resume_game()
+	elif _overlay_mode in [&"settings", &"controls"]:
+		_restore_overlay_parent()
+	elif _overlay_mode == &"confirm_restart":
+		get_tree().paused = false
+		restart_requested.emit()
+	elif _overlay_mode == &"confirm_menu":
+		get_tree().paused = false
+		menu_requested.emit()
 	elif _overlay_mode in [&"death", &"settlement"]:
 		get_tree().paused = false
 		restart_requested.emit()
@@ -806,11 +865,104 @@ func _on_primary_pressed() -> void:
 
 func _on_secondary_pressed() -> void:
 	ui_cue_requested.emit(&"ui_confirm")
+	if _overlay_mode == &"pause":
+		_show_confirmation(&"confirm_restart", "RESTART CURRENT RUN?", "PROGRESS IN THIS RUN WILL BE LOST.")
+	elif _overlay_mode in [&"confirm_restart", &"confirm_menu"]:
+		_restore_overlay_parent()
+	elif _overlay_mode in [&"death", &"settlement"]:
+		get_tree().paused = false
+		menu_requested.emit()
+
+
+func _on_map_select_pressed() -> void:
+	ui_cue_requested.emit(&"ui_confirm")
 	get_tree().paused = false
-	if _overlay_mode == &"settlement" or secondary_button.text == "RETURN TO MENU":
-		quit_requested.emit()
+	map_select_requested.emit()
+
+
+func _on_settings_pressed() -> void:
+	ui_cue_requested.emit(&"ui_confirm")
+	if is_instance_valid(_settings_menu):
+		return
+	_overlay_parent_mode = _overlay_mode
+	_overlay_mode = &"settings"
+	state_overlay.visible = false
+	_settings_menu = SettingsMenuScript.new()
+	_settings_menu.name = "SettingsMenu"
+	add_child(_settings_menu)
+	_settings_menu.close_requested.connect(_close_settings_menu)
+
+
+func _close_settings_menu() -> void:
+	if is_instance_valid(_settings_menu):
+		_settings_menu.queue_free()
+	_settings_menu = null
+	_overlay_mode = _overlay_parent_mode
+	_overlay_parent_mode = &"none"
+	state_overlay.visible = true
+	if _overlay_mode == &"pause":
+		audio_settings.visible = true
+		settings_button.grab_focus()
+
+
+func _on_controls_pressed() -> void:
+	ui_cue_requested.emit(&"ui_confirm")
+	_overlay_parent_mode = _overlay_mode
+	_overlay_mode = &"controls"
+	state_title.text = "CONTROLS"
+	state_subtitle.text = CONTROLS_TEXT
+	audio_settings.visible = false
+	_configure_subpage_buttons()
+
+
+func _on_main_menu_pressed() -> void:
+	ui_cue_requested.emit(&"ui_confirm")
+	if _overlay_mode == &"pause":
+		_show_confirmation(&"confirm_menu", "RETURN TO MAIN MENU?", "THE CURRENT RUN WILL END.")
 	else:
-		restart_requested.emit()
+		get_tree().paused = false
+		menu_requested.emit()
+
+
+func _configure_subpage_buttons() -> void:
+	primary_button.text = "BACK"
+	primary_button.visible = true
+	secondary_button.visible = false
+	map_select_button.visible = false
+	settings_button.visible = false
+	controls_button.visible = false
+	main_menu_button.visible = false
+	primary_button.grab_focus()
+
+
+func _show_confirmation(mode: StringName, title: String, subtitle: String) -> void:
+	_overlay_parent_mode = _overlay_mode
+	_overlay_mode = mode
+	state_title.text = title
+	state_title.modulate = Style.DANGER
+	state_subtitle.text = subtitle
+	audio_settings.visible = false
+	primary_button.text = "CONFIRM"
+	secondary_button.text = "CANCEL"
+	primary_button.visible = true
+	secondary_button.visible = true
+	map_select_button.visible = false
+	settings_button.visible = false
+	controls_button.visible = false
+	main_menu_button.visible = false
+	secondary_button.grab_focus()
+
+
+func _restore_overlay_parent() -> void:
+	var parent_mode := _overlay_parent_mode
+	_overlay_parent_mode = &"none"
+	if parent_mode == &"pause":
+		_overlay_mode = &"none"
+		toggle_pause()
+	elif parent_mode == &"death":
+		_overlay_mode = &"death"
+	elif parent_mode == &"settlement":
+		_overlay_mode = &"settlement"
 
 
 func set_audio_mix(snapshot: Dictionary) -> void:
@@ -835,6 +987,8 @@ func _on_audio_mute_pressed(bus_name: StringName) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(_settings_menu):
+		return
 	if event.is_action_pressed("pause"):
 		toggle_pause()
 		get_viewport().set_input_as_handled()

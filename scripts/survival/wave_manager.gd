@@ -120,6 +120,7 @@ func reset_run() -> void:
 
 
 func stop_run() -> void:
+	clear_event_spawn_modifiers()
 	_pending.clear()
 	_warnings.clear()
 	_active.clear()
@@ -171,15 +172,16 @@ func enqueue_event_enemy(kind: String, side: String = "far", priority: bool = tr
 	return ticket
 
 
-func apply_event_spawn_modifiers(interval_multiplier: float, active_bonus: int) -> void:
+func apply_event_spawn_modifiers(interval_multiplier: float, active_bonus: int) -> bool:
 	if state not in [State.SPAWNING, State.ACTIVE] or _event_modifiers_active:
-		return
+		return false
 	_event_modifiers_active = true
 	_event_base_active_limit = max_active_enemies
 	_event_base_spawn_interval = spawn_interval
-	max_active_enemies = maxi(max_active_enemies + active_bonus, 1)
-	spawn_interval = maxf(spawn_interval * clampf(interval_multiplier, 0.5, 1.0), 0.01)
+	max_active_enemies = maxi(max_active_enemies + clampi(active_bonus, 0, 2), 1)
+	spawn_interval = maxf(spawn_interval * clampf(interval_multiplier, 0.70, 0.80), 0.01)
 	_emit_counters()
+	return true
 
 
 func clear_event_spawn_modifiers() -> void:
@@ -191,6 +193,10 @@ func clear_event_spawn_modifiers() -> void:
 	_event_base_active_limit = 0
 	_event_base_spawn_interval = 0.0
 	_emit_counters()
+
+
+func event_modifiers_active() -> bool:
+	return _event_modifiers_active
 
 
 func debug_request_upgrade() -> bool:
@@ -262,6 +268,7 @@ func get_debug_snapshot() -> Dictionary:
 		"rest_remaining": countdown_remaining if state == State.REST else 0.0,
 		"spawn_interval": spawn_interval,
 		"fast_start_requested": _fast_start_requested,
+		"event_modifiers_active": _event_modifiers_active,
 	}
 
 
@@ -420,10 +427,10 @@ func _prune_invalid_enemies() -> void:
 func _complete_current_wave() -> void:
 	if _wave_completion_locked:
 		return
+	clear_event_spawn_modifiers()
 	_wave_completion_locked = true
 	completed_waves.append(current_wave)
 	wave_completed.emit(current_wave)
-	clear_event_spawn_modifiers()
 	if current_wave >= total_waves:
 		_finish_run()
 		return
