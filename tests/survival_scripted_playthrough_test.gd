@@ -1,9 +1,8 @@
 extends SceneTree
 
-const SurvivalScene := preload("res://scenes/survival/survival.tscn")
-
 var failures: Array[String] = []
 var strategy := "mixed"
+var map_variant := "industrial"
 var grenade_waves_used: Dictionary = {}
 
 
@@ -16,7 +15,11 @@ func _run() -> void:
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--strategy="):
 			strategy = argument.trim_prefix("--strategy=")
-	var game := SurvivalScene.instantiate()
+		elif argument.begins_with("--map="):
+			map_variant = argument.trim_prefix("--map=")
+	var scene_path := "res://scenes/survival/survival_sublevel_09.tscn" if map_variant == "sublevel" else "res://scenes/survival/survival.tscn"
+	var survival_scene := load(scene_path) as PackedScene
+	var game := survival_scene.instantiate()
 	game.set_meta("survival_upgrade_seed", 1337 if strategy == "mixed" else 7331)
 	# This long-running baseline measures the pre-event weapon/pacing contract.
 	# Event behavior has a separate deterministic suite with explicit opt-in.
@@ -41,7 +44,9 @@ func _run() -> void:
 	_expect(sprint_entry_speed >= 450.0, "survival sprint did not reach its launch-speed band")
 	_expect(sprint_air_speed >= sprint_entry_speed * 0.85, "survival sprint jump discarded horizontal momentum")
 	_release_inputs()
-	player.global_position = Vector2(640.0, 520.0)
+	var arena_bounds: Rect2 = game.map_config.get("camera_bounds", Rect2(0, 0, 1280, 720))
+	var arena_center_x := arena_bounds.position.x + arena_bounds.size.x * 0.5
+	player.global_position = Vector2(arena_center_x, float(game.map_config.get("player_spawn", Vector2(640, 552)).y) - 32.0)
 	player.velocity = Vector2.ZERO
 	for _frame in range(30):
 		await physics_frame
@@ -71,15 +76,15 @@ func _run() -> void:
 	while is_instance_valid(game) and game.run_state != "complete" and game._run_elapsed < 900.0:
 		frame_count += 1
 		if game.wave_manager.get_state_name() == &"upgrade_selection" and game.upgrade_manager.selection_open:
-			var choice_index: int = game.upgrade_manager.selection_history.size() % game.upgrade_manager.current_candidates.size() if strategy == "mixed" else 0
+			var choice_index: int = _upgrade_choice_index(game)
 			game._on_survival_upgrade_chosen(StringName(game.upgrade_manager.current_candidates[choice_index]["id"]))
 		# Keep the deterministic validation bot alive; damage delivery itself remains active.
 		# Heal between physics steps so real damage events and their source remain
 		# observable without making this deterministic acceptance bot mortal.
 		player.health = player.MAX_HEALTH
-		player.global_position.x = 640.0
+		player.global_position.x = arena_center_x
 		player.velocity.x = 0.0
-		if strategy == "rifle_only" and frame_count % 18 == 0 and player.is_on_floor() and not player.is_rolling:
+		if strategy in ["rifle_only", "rifle_build"] and frame_count % 18 == 0 and player.is_on_floor() and not player.is_rolling:
 			player._register_direction_tap(1 if frame_count % 36 == 0 else -1)
 			player._register_direction_tap(1 if frame_count % 36 == 0 else -1)
 		elif strategy == "mixed" and frame_count % 240 == 0 and game.projectiles.get_child_count() > 0 and player.is_on_floor() and not player.is_rolling:
@@ -100,10 +105,10 @@ func _run() -> void:
 			# This is test-only stall recovery for a fixed firing station, not a runtime
 			# shortcut. Production uses the arena's normal out-of-bounds recovery.
 			if target != game.boss and no_kill_elapsed >= 8.0:
-				target.global_position = Vector2(860.0 if target.global_position.x >= 640.0 else 420.0, 552.0)
+				target.global_position = Vector2(arena_center_x + 220.0 if target.global_position.x >= arena_center_x else arena_center_x - 220.0, 552.0)
 				target.velocity = Vector2.ZERO
 				no_kill_elapsed = 0.0
-			var weapon_id := &"rifle" if strategy == "rifle_only" else _weapon_for_target(game, target)
+			var weapon_id := _strategy_weapon(game, target)
 			if player.current_weapon_id != weapon_id:
 				player.weapon_inventory.select_weapon(weapon_id)
 			var offset: Vector2 = target.global_position - player.global_position
@@ -111,7 +116,7 @@ func _run() -> void:
 			_set_move(0.0)
 			Input.action_release("sprint")
 			var wave_number: int = game.wave_manager.current_wave
-			if strategy == "mixed" and wave_number in [3, 6, 8, 9] and not grenade_waves_used.has(wave_number) and player.grenade_count > 0 and player._start_grenade_charge():
+			if strategy in ["mixed", "grenade_mobility", "baseline"] and wave_number in [3, 5, 6, 8, 9] and not grenade_waves_used.has(wave_number) and player.grenade_count > 0 and player._start_grenade_charge():
 				player.grenade_charge = clampf(absf(offset.x) / 720.0, 0.28, 0.72)
 				if player._release_grenade():
 					grenade_waves_used[wave_number] = true
@@ -141,16 +146,17 @@ func _run() -> void:
 	# rifle-only probe also holds fire and rolls almost continuously; its lower
 	# 4-10 minute band detects stalls without pretending it is a new-player run;
 	# shield positioning intentionally produces wider timing variance here.
-	var minimum_duration := 240.0 if strategy == "rifle_only" else 360.0
-	var maximum_duration := 600.0 if strategy == "rifle_only" else 900.0
+	var dedicated := strategy in ["rifle_only", "rifle_build", "shotgun_build", "sniper_build"]
+	var minimum_duration := 240.0 if dedicated else 360.0
+	var maximum_duration := 900.0
 	var duration_in_band: bool = game._run_elapsed >= minimum_duration and game._run_elapsed <= maximum_duration
 	_expect(duration_in_band, "simulated survival duration %.1fs was outside the strategy band for %s" % [game._run_elapsed, strategy])
-	_expect(used_weapon_count == (1 if strategy == "rifle_only" else 4), "weapon contribution count %d did not match strategy %s" % [used_weapon_count, strategy])
+	_expect(used_weapon_count == (1 if dedicated else 4), "weapon contribution count %d did not match strategy %s" % [used_weapon_count, strategy])
 	_expect(int(snapshot["max_active_enemies"]) <= 7, "scripted survival exceeded the seven-enemy active cap")
 	_expect(int(snapshot["roll"]["successes"]) >= 1, "survival telemetry did not record the roll")
 	_expect(int(snapshot["grenades"]["throws"]) >= 1, "survival telemetry did not record the grenade")
 	_expect(game.upgrade_manager.selection_history.size() == 4, "scripted survival did not select four run upgrades")
-	if strategy == "mixed":
+	if strategy in ["mixed", "grenade_mobility"]:
 		_expect(int(snapshot["grenades"]["damage"]) > 0, "mixed survival route did not produce real grenade damage")
 	var total_hits := 0
 	var total_headshots := 0
@@ -162,6 +168,7 @@ func _run() -> void:
 		total_damage += int(stats.get("damage", 0))
 	print("SURVIVAL_SCRIPTED_METRICS %s" % JSON.stringify({
 		"strategy": strategy,
+		"map": map_variant,
 		"elapsed": game._run_elapsed,
 		"kills": game._run_kills,
 		"score": game.score,
@@ -180,6 +187,37 @@ func _run() -> void:
 		"build": game.upgrade_manager.selection_history,
 	}))
 	_finish()
+
+
+func _strategy_weapon(game: Node, target: Node) -> StringName:
+	match strategy:
+		"rifle_only", "rifle_build":
+			return &"rifle"
+		"shotgun_build":
+			return &"shotgun"
+		"sniper_build":
+			return &"sniper"
+	return _weapon_for_target(game, target)
+
+
+func _upgrade_choice_index(game: Node) -> int:
+	var preferred: Array[StringName] = []
+	match strategy:
+		"rifle_build":
+			preferred = [&"auto_overclock", &"quick_reload", &"reinforced_vitals"]
+		"shotgun_build":
+			preferred = [&"scatter_load", &"quick_reload", &"reinforced_vitals"]
+		"sniper_build":
+			preferred = [&"lance_penetration", &"quick_reload", &"momentum_module"]
+		"grenade_mobility":
+			preferred = [&"extra_ordnance", &"blast_radius", &"high_explosive", &"evasive_circuit", &"momentum_module"]
+		"baseline":
+			preferred = [&"reinforced_vitals", &"endurance_core", &"efficient_drive", &"evasive_circuit", &"extra_ordnance"]
+	for preferred_id in preferred:
+		for index in range(game.upgrade_manager.current_candidates.size()):
+			if StringName(game.upgrade_manager.current_candidates[index]["id"]) == preferred_id:
+				return index
+	return game.upgrade_manager.selection_history.size() % game.upgrade_manager.current_candidates.size()
 
 
 func _select_target(game: Node) -> Node:

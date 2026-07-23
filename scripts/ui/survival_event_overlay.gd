@@ -226,6 +226,7 @@ func _build_supply_overlay() -> void:
 		button.mouse_filter = Control.MOUSE_FILTER_STOP
 		button.add_theme_font_size_override("font_size", 17)
 		button.pressed.connect(_choose_supply.bind(index))
+		button.mouse_entered.connect(button.grab_focus)
 		supply_cards.append(button)
 		row.add_child(button)
 	supply_hint = Label.new()

@@ -11,6 +11,7 @@ const RunUpgradeManagerScript := preload("res://scripts/survival/run_upgrade_man
 const SurvivalUpgradeOverlayScript := preload("res://scripts/ui/survival_upgrade_overlay.gd")
 const SurvivalEventDirectorScript := preload("res://scripts/survival/survival_event_director.gd")
 const SurvivalEventOverlayScript := preload("res://scripts/ui/survival_event_overlay.gd")
+const BountyMarkerScript := preload("res://scripts/survival/bounty_marker.gd")
 const WeaponCatalogScript := preload("res://scripts/weapons/weapon_catalog.gd")
 
 const SPAWN_PROTECTION_TIME := 0.48
@@ -20,6 +21,13 @@ const SUPPLY_CONFIG := {
 	"medical_score": 400,
 	"weapon_score": 350,
 	"tactical_score": 300,
+}
+const EVENT_REWARD_CONFIG := {
+	"bounty_score": 750,
+	"reinforcement_score": 600,
+	"medical": 10,
+	"ammo_floor": 0.35,
+	"grenades": 1,
 }
 
 var wave_manager: SurvivalWaveManager
@@ -49,6 +57,8 @@ var spawn_validation_result: Dictionary = {}
 var _spawn_positions: Dictionary = {}
 var _pending_supply_options: Array[Dictionary] = []
 var _control_locks: Dictionary = {}
+var _pending_bounty_ticket := -1
+var _bounty_target_id := 0
 var _last_counter_snapshot := {
 	"wave": 0,
 	"total": 3,
@@ -94,6 +104,7 @@ func _ready() -> void:
 	var waves := SurvivalWaveData.phase_a_waves() if bool(get_meta("survival_phase_a_test", false)) else SurvivalWaveData.full_waves()
 	waves = _adapt_waves_for_map(waves)
 	wave_manager.configure(waves, maxi(6 + int(map_config.get("active_limit_offset", 0)), 1))
+	wave_manager.initial_countdown = 3.0
 	if not bool(get_meta("survival_phase_a_test", false)):
 		wave_manager.configure_upgrades([2, 4, 6, 8])
 	if bool(get_meta("survival_test_mode", false)):
@@ -129,6 +140,9 @@ func _ready() -> void:
 	var test_mode := bool(get_meta("survival_test_mode", false))
 	var events_enabled := bool(get_meta("survival_events_enabled", not test_mode))
 	event_director.configure(map_id, int(get_meta("survival_event_seed", 0)), events_enabled)
+	event_director.event_updated.connect(_on_survival_event_updated)
+	event_director.event_timed_out.connect(_on_survival_event_timed_out)
+	event_director.event_finished.connect(_on_survival_event_finished)
 	event_overlay = SurvivalEventOverlayScript.new()
 	event_overlay.name = "SurvivalEventOverlay"
 	add_child(event_overlay)
@@ -144,6 +158,24 @@ func _ready() -> void:
 	hud.show_banner(str(map_config.get("display_name", "SURVIVAL PROTOCOL ONLINE")), Color("55e39a"), false, 1.35)
 	sfx.play_music(StringName(map_config.get("music", &"level")), 0.28)
 	wave_manager.start_run()
+
+
+func begin_product_intro(map_name: String, objective: String, countdown: float = 3.0) -> void:
+	_product_intro_token += 1
+	var token := _product_intro_token
+	_acquire_player_control_lock(&"product_intro")
+	player.cancel_transient_actions()
+	hud.show_banner(map_name, Color(0.35, 0.9, 0.82, 1.0), true)
+	hud.show_objective_update(objective, maxf(countdown, 1.0))
+	var remaining := maxi(int(ceil(countdown)), 1)
+	while remaining > 0 and token == _product_intro_token:
+		hud.show_banner("WAVE PROTOCOL IN %d" % remaining, Color(1.0, 0.82, 0.34, 1.0), true)
+		await get_tree().create_timer(1.0, false).timeout
+		remaining -= 1
+	if token != _product_intro_token:
+		return
+	_release_player_control_lock(&"product_intro")
+	hud.show_banner("SURVIVE!", Color(0.38, 1.0, 0.68, 1.0), false, 0.45)
 
 
 func _validate_initial_player_spawn() -> void:
@@ -331,6 +363,27 @@ func _on_survival_wave_started(wave_number: int, total: int, title: String) -> v
 	sfx.play_cue(&"mission_start")
 	if survival_balance_telemetry != null:
 		survival_balance_telemetry.begin_wave(wave_number, title, _run_elapsed)
+	_prepare_event_for_wave(wave_number)
+
+
+func _prepare_event_for_wave(wave_number: int) -> void:
+	if event_director == null or wave_number == 10:
+		return
+	var definition := event_director.get_scheduled_event(wave_number)
+	if definition.is_empty() or StringName(definition.get("timing", &"")) != &"wave_start":
+		return
+	var event_id := StringName(definition.get("event_id", &""))
+	match event_id:
+		&"elite_bounty":
+			_pending_bounty_ticket = wave_manager.enqueue_event_enemy("elite", "far", true)
+			if _pending_bounty_ticket >= 0:
+				hud.show_banner("ELITE BOUNTY // TARGET INBOUND", Color("ffd35a"), false, 0.9)
+		&"emergency_reinforcements":
+			if event_director.begin_event(definition, wave_number):
+				wave_manager.apply_event_spawn_modifiers(0.75, 1)
+				wave_manager.enqueue_event_enemy("elite", "far", false)
+				event_overlay.show_event(definition, "SURVIVE THE ACCELERATED DEPLOYMENT")
+				hud.show_banner("EMERGENCY REINFORCEMENTS", Color("ff9f43"), false, 0.9)
 
 
 func _on_spawn_warning_requested(ticket: int, kind: String, side: String, warning_time: float) -> void:
@@ -349,10 +402,29 @@ func _on_survival_spawn_requested(ticket: int, kind: String, side: String) -> vo
 	_spawn_positions.erase(ticket)
 	var enemy := _spawn_enemy(kind, spawn_position, 0.0, false, false, wave_manager.current_wave)
 	wave_manager.register_spawned(ticket, enemy)
+	if ticket == _pending_bounty_ticket:
+		_pending_bounty_ticket = -1
+		_activate_bounty_target(enemy)
 	if survival_balance_telemetry != null:
 		survival_balance_telemetry.record_spawn(kind)
 	var timer := get_tree().create_timer(SPAWN_PROTECTION_TIME)
 	timer.timeout.connect(_activate_spawned_enemy.bind(enemy.get_instance_id()))
+
+
+func _activate_bounty_target(enemy: Node) -> void:
+	if enemy == null or not is_instance_valid(enemy) or event_director == null:
+		return
+	var definition := event_director.get_scheduled_event(wave_manager.current_wave)
+	if StringName(definition.get("event_id", &"")) != &"elite_bounty" or not event_director.begin_event(definition, wave_manager.current_wave):
+		return
+	_bounty_target_id = enemy.get_instance_id()
+	enemy.set_meta("survival_bounty_target", true)
+	var marker := BountyMarkerScript.new()
+	marker.name = "BountyMarker"
+	marker.position = Vector2(0.0, -70.0) / enemy.scale
+	marker.scale = Vector2.ONE / enemy.scale
+	enemy.add_child(marker)
+	event_overlay.show_event(definition, "DESTROY THE MARKED ELITE")
 
 
 func _activate_spawned_enemy(instance_id: int) -> void:
@@ -551,6 +623,10 @@ func _supply_resolved_on_wave(wave_number: int) -> bool:
 func _on_survival_wave_completed(wave_number: int) -> void:
 	_clear_hostile_dangers()
 	if event_director != null:
+		if event_director.is_active(&"emergency_reinforcements"):
+			_complete_reinforcement_event()
+		elif event_director.is_active(&"elite_bounty"):
+			_fail_bounty_event("TARGET ESCAPED")
 		var pending := event_director.mark_pending(wave_number, StringName(run_state))
 		if StringName(pending.get("event_id", &"")) == &"supply_drop" and wave_manager.request_event_hold():
 			call_deferred("_open_supply_event", wave_number)
@@ -683,10 +759,131 @@ func _on_supply_chosen(option_id: StringName) -> void:
 	wave_manager.resume_after_event()
 
 
+func _on_survival_event_updated(definition: Dictionary, remaining: float, _progress: float) -> void:
+	if event_overlay == null or event_overlay.is_supply_open():
+		return
+	var event_id := StringName(definition.get("event_id", &""))
+	var objective := ""
+	if event_id == &"elite_bounty":
+		var target := instance_from_id(_bounty_target_id) if _bounty_target_id != 0 else null
+		if target != null and is_instance_valid(target):
+			objective = "TARGET HP %d / %d" % [int(target.get("health")), int(target.get("max_health"))]
+		else:
+			objective = "DESTROY THE MARKED ELITE"
+	elif event_id == &"emergency_reinforcements":
+		objective = "SURGE ACTIVE // HOSTILES %02d" % wave_manager.get_alive_count()
+	event_overlay.update_event(remaining, objective)
+
+
+func _on_survival_event_timed_out(event_id: StringName) -> void:
+	match event_id:
+		&"elite_bounty":
+			_fail_bounty_event("TARGET ESCAPED")
+		&"emergency_reinforcements":
+			_complete_reinforcement_event()
+
+
+func _fail_bounty_event(message: String) -> void:
+	if event_director == null or not event_director.is_active(&"elite_bounty"):
+		return
+	_clear_bounty_marker()
+	event_director.fail_active(message)
+
+
+func _complete_bounty_event() -> void:
+	if event_director == null or not event_director.is_active(&"elite_bounty"):
+		return
+	_clear_bounty_marker()
+	var points := int(EVENT_REWARD_CONFIG["bounty_score"])
+	score += points
+	hud.set_score(score)
+	var reward := _choose_effective_event_supply()
+	var result := _apply_small_event_supply(reward)
+	result["score_awarded"] = points + int(result.get("score_awarded", 0))
+	event_director.complete_active(reward, "TARGET ELIMINATED // SCORE +%d" % points, result)
+
+
+func _complete_reinforcement_event() -> void:
+	if event_director == null or not event_director.is_active(&"emergency_reinforcements"):
+		return
+	wave_manager.clear_event_spawn_modifiers()
+	var points := int(EVENT_REWARD_CONFIG["reinforcement_score"])
+	score += points
+	hud.set_score(score)
+	var reward := _choose_effective_event_supply()
+	var result := _apply_small_event_supply(reward)
+	result["score_awarded"] = points + int(result.get("score_awarded", 0))
+	event_director.complete_active(reward, "SURGE CONTAINED // SCORE +%d" % points, result)
+
+
+func _choose_effective_event_supply() -> StringName:
+	var available: Array[StringName] = []
+	if player.health < player.runtime_max_health:
+		available.append(&"medical")
+	var needs_ammo := false
+	for weapon_id in WeaponCatalogScript.ORDER:
+		var maximum := int(WeaponCatalogScript.get_weapon(weapon_id)["magazine_size"])
+		if player.weapon_inventory.get_ammo_for(weapon_id) < int(ceil(maximum * float(EVENT_REWARD_CONFIG["ammo_floor"]))):
+			needs_ammo = true
+			break
+	if needs_ammo:
+		available.append(&"weapon")
+	if player.grenade_count < player.runtime_grenade_capacity:
+		available.append(&"tactical")
+	return event_director.choose_small_supply(available) if not available.is_empty() else &"score"
+
+
+func _apply_small_event_supply(reward: StringName) -> Dictionary:
+	var result := {
+		"health_restored": 0,
+		"grenades_added": 0,
+		"ammo_refilled": false,
+	}
+	match reward:
+		&"medical":
+			var before_health: int = player.health
+			player.apply_field_resupply(int(EVENT_REWARD_CONFIG["medical"]), 0.0, 0)
+			result["health_restored"] = player.health - before_health
+		&"weapon":
+			player.apply_field_resupply(0, float(EVENT_REWARD_CONFIG["ammo_floor"]), 0)
+			result["ammo_refilled"] = true
+		&"tactical":
+			var before_grenades: int = player.grenade_count
+			player.add_grenades(int(EVENT_REWARD_CONFIG["grenades"]))
+			result["grenades_added"] = player.grenade_count - before_grenades
+		&"score":
+			score += 200
+			hud.set_score(score)
+			result["score_awarded"] = 200
+	return result
+
+
+func _on_survival_event_finished(record: Dictionary) -> void:
+	if event_overlay == null or StringName(record.get("event_id", &"")) == &"supply_drop":
+		return
+	var success := StringName(record.get("status", &"")) == &"success"
+	event_overlay.finish_event(success, str(record.get("detail", "")))
+	sfx.play_cue(&"ui_confirm" if success else &"ui_adjust")
+
+
+func _clear_bounty_marker() -> void:
+	if _bounty_target_id != 0:
+		var target := instance_from_id(_bounty_target_id)
+		if target != null and is_instance_valid(target):
+			target.set_meta("survival_bounty_target", false)
+			var marker: Node = target.get_node_or_null("BountyMarker")
+			if marker != null:
+				marker.queue_free()
+	_bounty_target_id = 0
+	_pending_bounty_ticket = -1
+
+
 func _on_survival_boss_requested(_wave_number: int) -> void:
 	_clear_hostile_dangers()
 	if event_director != null and event_director.is_active():
 		event_director.cancel_active("BOSS PROTOCOL OVERRIDE")
+	wave_manager.clear_event_spawn_modifiers()
+	_clear_bounty_marker()
 	if event_overlay != null:
 		event_overlay.clear_all()
 	_set_map_hazards_suspended(true)
@@ -741,6 +938,8 @@ func _on_enemy_died(enemy: Node, points: int) -> void:
 	var weapon_id: StringName = enemy.get("last_damage_weapon_id")
 	var instance_id := enemy.get_instance_id()
 	super._on_enemy_died(enemy, points)
+	if instance_id == _bounty_target_id:
+		_complete_bounty_event()
 	if wave_manager != null:
 		wave_manager.enemy_defeated(instance_id)
 	current_combo = current_combo + 1 if combo_remaining > 0.0 else 1
@@ -774,6 +973,9 @@ func _on_player_died() -> void:
 		survival_balance_telemetry.finish(&"death", _run_elapsed)
 	if event_director != null and event_director.get_state_name() in [&"pending", &"active", &"resolving"]:
 		event_director.cancel_active("OPERATIVE DOWN")
+	if wave_manager != null:
+		wave_manager.clear_event_spawn_modifiers()
+	_clear_bounty_marker()
 	var failure_summary := _build_survival_summary(wave_manager.current_wave)
 	if upgrade_manager != null:
 		upgrade_manager.reset_run()
@@ -802,6 +1004,9 @@ func _on_survival_run_completed() -> void:
 	_acquire_player_control_lock(&"run_complete")
 	if event_director != null and event_director.get_state_name() in [&"pending", &"active", &"resolving"]:
 		event_director.cancel_active("RUN COMPLETE")
+	if wave_manager != null:
+		wave_manager.clear_event_spawn_modifiers()
+	_clear_bounty_marker()
 	_clear_hostile_dangers()
 	for grenade in grenades.get_children():
 		grenade.queue_free()
@@ -837,6 +1042,8 @@ func _build_survival_summary(reached_wave: int) -> Dictionary:
 	if boss_started >= 0.0:
 		boss_time = maxf(float(telemetry_snapshot.get("elapsed", _run_elapsed)) - boss_started, 0.0)
 	var summary := {
+		"map_id": map_id,
+		"map_name": str(map_config.get("display_name", "SURVIVAL BATTLEGROUND")),
 		"score": score,
 		"elapsed": _run_elapsed,
 		"reached_wave": reached_wave,
@@ -864,6 +1071,9 @@ func _build_survival_summary(reached_wave: int) -> Dictionary:
 
 func _clear_survival_runtime(include_boss: bool = true) -> void:
 	_set_map_hazards_suspended(true)
+	if wave_manager != null:
+		wave_manager.clear_event_spawn_modifiers()
+	_clear_bounty_marker()
 	_pending_supply_options.clear()
 	_control_locks.clear()
 	_sync_player_controls()
@@ -948,15 +1158,32 @@ func _restart_scene() -> void:
 
 
 func _on_quit_requested() -> void:
+	_on_menu_requested()
+
+
+func _prepare_survival_exit() -> void:
+	_product_intro_token += 1
 	if upgrade_manager != null:
 		upgrade_manager.reset_run()
 	if event_director != null:
 		event_director.reset_run()
 	if event_overlay != null:
 		event_overlay.clear_all()
+	if wave_manager != null:
+		wave_manager.clear_event_spawn_modifiers()
+	_clear_bounty_marker()
 	_control_locks.clear()
 	get_tree().paused = false
-	get_tree().change_scene_to_file("res://scenes/menu/mode_select.tscn")
+
+
+func _on_menu_requested() -> void:
+	_prepare_survival_exit()
+	_change_product_scene("res://scenes/menu/mode_select.tscn")
+
+
+func _on_map_select_requested() -> void:
+	_prepare_survival_exit()
+	_change_product_scene("res://scenes/menu/mode_select.tscn", {"show_map_select": true})
 
 
 func _on_pause_changed(paused: bool) -> void:

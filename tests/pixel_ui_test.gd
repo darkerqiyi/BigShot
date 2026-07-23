@@ -99,14 +99,19 @@ func _test_live_states() -> void:
 	hud.set_boss_health(500, 820, 2)
 	_expect(int(hud.boss_actual_bar.value) == 500 and hud.boss_delayed_bar.value >= 500.0 and "PHASE II" in hud.boss_phase_label.text, "Boss pixel health or phase UI is inaccurate")
 	hud.toggle_pause()
-	_expect(paused and hud.state_overlay.visible and hud.audio_settings.visible and hud._overlay_mode == &"pause", "pause overlay did not expose audio settings")
+	_expect(paused and hud.state_overlay.visible and hud.audio_settings.visible and hud.settings_button.visible and hud.controls_button.visible and hud.main_menu_button.visible and hud._overlay_mode == &"pause", "pause overlay did not expose audio and product navigation")
+	hud._on_settings_pressed()
+	await process_frame
+	_expect(hud._overlay_mode == &"settings" and is_instance_valid(hud._settings_menu) and not hud.state_overlay.visible, "pause settings page did not open the unified settings view")
+	hud._close_settings_menu()
+	_expect(hud._overlay_mode == &"pause" and hud.audio_settings.visible, "settings page did not return to pause")
 	hud.toggle_pause()
 	_expect(not paused and not hud.state_overlay.visible and not hud.audio_settings.visible, "resume did not restore game and hide audio settings")
 	hud.show_death()
 	_expect(hud.state_overlay.visible and hud._overlay_mode == &"death" and "OPERATIVE DOWN" in hud.state_title.text, "death overlay is not configured")
 	hud.show_settlement(1250, 64, {"elapsed": 367.0, "kills": 29, "accuracy": 58, "damage_events": 7, "rank": "A"})
 	_expect(hud._overlay_mode == &"settlement" and "TIME 06:07" in hud.state_subtitle.text and "SCORE 001250" in hud.state_subtitle.text and "KILLS 29" in hud.state_subtitle.text and "ACCURACY 058%" in hud.state_subtitle.text and "HITS TAKEN 07" in hud.state_subtitle.text and "HP 064" in hud.state_subtitle.text, "settlement summary does not use the available mission statistics")
-	_expect(hud.secondary_button.visible and hud.secondary_button.text == "EXIT GAME", "settlement does not provide replay and exit choices")
+	_expect(hud.primary_button.visible and hud.main_menu_button.visible and not hud.secondary_button.visible, "settlement does not provide replay and main-menu choices")
 	game.queue_free()
 	await process_frame
 
@@ -119,7 +124,7 @@ func _expect(condition: bool, message: String) -> void:
 func _finish() -> void:
 	paused = false
 	if failures.is_empty():
-		print("PIXEL_UI_PASS nearest/snap baseline, 720p/1080p/1440p/ultrawide anchors, avatar/icons, weapon/ammo, health, boss layers/phases, pause audio/death/settlement")
+		print("PIXEL_UI_PASS nearest/snap baseline, responsive anchors, combat HUD, pause settings/controls and product settlement navigation")
 		quit(0)
 	else:
 		for failure in failures:

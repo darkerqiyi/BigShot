@@ -33,7 +33,46 @@ grow_horizontal = 2
 mouse_filter = 2
 color = Color(0.145, 0.42, 0.45, 0.16)
 
+[node name="TitleCenter" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="TitleCenter"]
+custom_minimum_size = Vector2(620, 300)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="TitleCenter/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Title" type="Label" parent="TitleCenter/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.827, 0.353, 1)
+theme_override_font_sizes/font_size = 52
+text = "BIGSHOT"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="TitleCenter/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.396, 0.784, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "PIXEL STRIKE PROTOCOL // DEMO"
+horizontal_alignment = 1
+
+[node name="Prompt" type="Label" parent="TitleCenter/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.271, 0.847, 0.816, 1)
+theme_override_font_sizes/font_size = 18
+text = "PRESS ANY KEY"
+horizontal_alignment = 1
+
 [node name="Center" type="CenterContainer" parent="."]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -80,6 +119,16 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "2  //  SURVIVAL // 10 WAVES"
 
+[node name="Settings" type="Button" parent="Center/Panel/Content"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "SETTINGS"
+
+[node name="Controls" type="Button" parent="Center/Panel/Content"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "CONTROLS"
+
 [node name="Quit" type="Button" parent="Center/Panel/Content"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
@@ -91,6 +140,44 @@ theme_override_colors/font_color = Color(0.443, 0.514, 0.584, 1)
 theme_override_font_sizes/font_size = 12
 text = "MOUSE / ARROWS + ENTER  •  1 PVE  •  2 SURVIVAL"
 horizontal_alignment = 1
+
+[node name="InfoCenter" type="CenterContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="InfoCenter"]
+custom_minimum_size = Vector2(640, 430)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="InfoCenter/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="InfoCenter/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.827, 0.353, 1)
+theme_override_font_sizes/font_size = 30
+text = "CONTROLS"
+horizontal_alignment = 1
+
+[node name="Body" type="Label" parent="InfoCenter/Panel/Content"]
+custom_minimum_size = Vector2(0, 280)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.92, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "A / D  // MOVE & DOUBLE-TAP ROLL\nSPACE  // JUMP\nSHIFT  // SPRINT\nMOUSE  // AIM\nLEFT MOUSE / J  // FIRE\nRIGHT MOUSE  // CHARGE GRENADE\n1—4  // SELECT WEAPON\nR  // RELOAD\nESC  // PAUSE / BACK"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Back" type="Button" parent="InfoCenter/Panel/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "BACK"
 
 [node name="MapCenter" type="CenterContainer" parent="."]
 visible = false

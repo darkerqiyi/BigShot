@@ -13,6 +13,7 @@ var _tracked_frame := -1
 var _sequence := 0
 var dropped_effects := 0
 var recycled_effects := 0
+var flash_scale := 1.0
 
 
 func _ready() -> void:
@@ -57,7 +58,7 @@ func spawn_effect(
 	effect.set_meta("impact_sequence", _sequence)
 	effect.configure(
 		color,
-		strength,
+		strength * clampf(flash_scale, 0.0, 1.0),
 		large,
 		kind,
 		direction,

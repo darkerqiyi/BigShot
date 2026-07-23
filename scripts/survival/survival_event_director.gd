@@ -9,7 +9,7 @@ signal state_changed(state: StringName)
 
 const EventData := preload("res://scripts/survival/survival_event_data.gd")
 const DEFAULT_EVENT_WAVES: Array[int] = [3, 5, 7]
-const MAX_EVENTS_PER_RUN := 1
+const MAX_EVENTS_PER_RUN := 2
 
 enum State {
 	IDLE,
@@ -31,6 +31,7 @@ var active_definition: Dictionary = {}
 var active_wave := 0
 var remaining := 0.0
 var suspended := false
+var last_resolved_wave := -99
 
 var _rng := RandomNumberGenerator.new()
 var _resolved := false
@@ -52,6 +53,7 @@ func reset_run() -> void:
 	active_wave = 0
 	remaining = 0.0
 	suspended = false
+	last_resolved_wave = -99
 	_resolved = false
 	schedule.clear()
 	_set_state(State.IDLE)
@@ -60,22 +62,37 @@ func reset_run() -> void:
 
 
 func _build_schedule() -> void:
+	var waves := DEFAULT_EVENT_WAVES.duplicate()
+	_shuffle_array(waves)
 	var definitions: Array[Dictionary] = []
 	for definition in EventData.all_events():
 		var allowed_maps: Array = definition.get("allowed_maps", []) as Array
 		if allowed_maps.has(map_id):
 			definitions.append(definition)
-	var definition := _take_weighted_definition(definitions)
-	if definition.is_empty():
-		return
-	var eligible_waves: Array[int] = []
-	for wave in DEFAULT_EVENT_WAVES:
-		if (definition.get("allowed_waves", []) as Array).has(wave):
-			eligible_waves.append(wave)
-	if eligible_waves.is_empty():
-		return
-	var wave := eligible_waves[_rng.randi_range(0, eligible_waves.size() - 1)]
-	schedule[wave] = definition.duplicate(true)
+	var target_count := mini(MAX_EVENTS_PER_RUN, mini(waves.size(), definitions.size()))
+	for wave in waves:
+		if schedule.size() >= target_count:
+			break
+		var eligible: Array[Dictionary] = []
+		for definition in definitions:
+			if (definition.get("allowed_waves", []) as Array).has(wave):
+				eligible.append(definition)
+		var selected := _take_weighted_definition(eligible)
+		if selected.is_empty():
+			continue
+		schedule[wave] = selected.duplicate(true)
+		var selected_id := StringName(selected.get("event_id", &""))
+		for index in range(definitions.size() - 1, -1, -1):
+			if StringName(definitions[index].get("event_id", &"")) == selected_id:
+				definitions.remove_at(index)
+
+
+func _shuffle_array(values: Array) -> void:
+	for index in range(values.size() - 1, 0, -1):
+		var swap_index := _rng.randi_range(0, index)
+		var value = values[index]
+		values[index] = values[swap_index]
+		values[swap_index] = value
 
 
 func _take_weighted_definition(definitions: Array[Dictionary]) -> Dictionary:
@@ -101,7 +118,7 @@ func get_scheduled_event(wave: int) -> Dictionary:
 
 
 func mark_pending(wave: int, current_state: StringName = &"") -> Dictionary:
-	if not enabled or state != State.IDLE or history.size() >= MAX_EVENTS_PER_RUN:
+	if not enabled or history.size() >= MAX_EVENTS_PER_RUN or not _state_allows_event(wave):
 		return {}
 	var definition := get_scheduled_event(wave)
 	if definition.is_empty() or not bool(definition.get("blocks_wave_start", false)):
@@ -121,6 +138,7 @@ func begin_pending() -> bool:
 	var wave := pending_wave
 	pending_definition.clear()
 	pending_wave = 0
+	_set_state(State.IDLE)
 	return _begin_event(definition, wave)
 
 
@@ -131,7 +149,7 @@ func begin_event(definition: Dictionary, wave: int) -> bool:
 
 
 func _begin_event(definition: Dictionary, wave: int) -> bool:
-	if not enabled or definition.is_empty() or not active_definition.is_empty() or history.size() >= MAX_EVENTS_PER_RUN:
+	if not enabled or definition.is_empty() or not active_definition.is_empty() or history.size() >= MAX_EVENTS_PER_RUN or not _state_allows_event(wave):
 		return false
 	var event_id := StringName(definition.get("event_id", &""))
 	if event_id == &"":
@@ -146,6 +164,21 @@ func _begin_event(definition: Dictionary, wave: int) -> bool:
 	_set_state(State.ACTIVE)
 	event_started.emit(active_definition.duplicate(true), active_wave)
 	event_updated.emit(active_definition.duplicate(true), remaining, 0.0)
+	return true
+
+
+func _state_allows_event(wave: int) -> bool:
+	if state == State.IDLE:
+		return true
+	if state != State.COOLDOWN:
+		return false
+	var cooldown_waves := 1
+	if not history.is_empty():
+		var previous_id := StringName(history.back().get("event_id", &""))
+		cooldown_waves = int(EventData.get_event(previous_id).get("cooldown_waves", 1))
+	if wave - last_resolved_wave <= cooldown_waves:
+		return false
+	_set_state(State.IDLE)
 	return true
 
 
@@ -181,6 +214,7 @@ func _resolve_active(status: StringName, reward: StringName, detail: String, res
 	for key in result:
 		record[key] = result[key]
 	history.append(record)
+	last_resolved_wave = active_wave
 	_set_state(State.RESOLVING)
 	active_definition.clear()
 	active_wave = 0
@@ -210,25 +244,42 @@ func get_summary() -> Dictionary:
 	var health_restored := 0
 	var magazines_refilled := 0
 	var grenades_added := 0
+	var bounty_successes := 0
+	var reinforcement_successes := 0
+	var supply_triggered := false
+	var supply_choice: StringName = &"none"
 	for record in history:
-		if StringName(record.get("event_id", &"")) != &"supply_drop":
+		var event_id := StringName(record.get("event_id", &""))
+		var succeeded := StringName(record.get("status", &"")) == &"success"
+		if event_id == &"elite_bounty" and succeeded:
+			bounty_successes += 1
+		elif event_id == &"emergency_reinforcements" and succeeded:
+			reinforcement_successes += 1
+		if event_id != &"supply_drop":
+			var event_reward := StringName(record.get("reward", &"none"))
+			if event_reward in [&"medical", &"weapon", &"tactical"]:
+				supplies.append(event_reward)
 			continue
+		supply_triggered = true
 		supply_wave = int(record.get("wave", 0))
 		var reward := StringName(record.get("reward", &"none"))
 		if reward != &"none":
 			supplies.append(reward)
+			supply_choice = reward
 		health_restored += int(record.get("health_restored", 0))
 		magazines_refilled += int(record.get("magazines_refilled", 0))
 		grenades_added += int(record.get("grenades_added", 0))
 	return {
 		"event_count": history.size(),
 		"event_history": get_history(),
-		"supply_triggered": not history.is_empty(),
+		"supply_triggered": supply_triggered,
 		"supply_wave": supply_wave,
-		"supply_choice": supplies[0] if not supplies.is_empty() else &"none",
+		"supply_choice": supply_choice,
 		"supply_health_restored": health_restored,
 		"supply_magazines_refilled": magazines_refilled,
 		"supply_grenades_added": grenades_added,
+		"bounty_successes": bounty_successes,
+		"reinforcement_successes": reinforcement_successes,
 		"supplies": supplies,
 	}
 
@@ -246,6 +297,7 @@ func get_debug_snapshot() -> Dictionary:
 		"active_wave": active_wave,
 		"remaining": remaining,
 		"suspended": suspended,
+		"last_resolved_wave": last_resolved_wave,
 	}
 
 
@@ -262,10 +314,17 @@ func debug_force_event(event_id: StringName, wave: int) -> bool:
 		return false
 	for scheduled_wave in schedule.keys():
 		var scheduled: Dictionary = schedule[scheduled_wave]
-		if StringName(scheduled.get("event_id", &"")) == event_id:
+		if int(scheduled_wave) == wave or StringName(scheduled.get("event_id", &"")) == event_id:
 			schedule.erase(scheduled_wave)
 	schedule[wave] = definition
 	return true
+
+
+func choose_small_supply(available: Array[StringName] = []) -> StringName:
+	var choices: Array[StringName] = available.duplicate()
+	if choices.is_empty():
+		choices = [&"medical", &"weapon", &"tactical"]
+	return choices[_rng.randi_range(0, choices.size() - 1)]
 
 
 func debug_expire_active() -> bool:

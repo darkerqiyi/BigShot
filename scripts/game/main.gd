@@ -15,6 +15,7 @@ const MissionMovingPlatformScript := preload("res://scripts/world/moving_platfor
 const PlayerGrenadeScript := preload("res://scripts/combat/player_grenade.gd")
 const GrenadeExplosionScript := preload("res://scripts/effects/grenade_explosion.gd")
 const DamageNumberManagerScript := preload("res://scripts/effects/damage_number_manager.gd")
+const TutorialDirectorScript := preload("res://scripts/game/tutorial_director.gd")
 const Tuning := preload("res://scripts/config/game_tuning.gd")
 
 const MISSION_ENCOUNTERS := [
@@ -101,6 +102,8 @@ var _active_ability_tutorial: StringName = &""
 var enemy_balance_mode: StringName = &"pve"
 var damage_numbers: DamageNumberManager
 var impact_effects: Node
+var tutorial_director: Node
+var _product_intro_token := 0
 static var _resume_boss_checkpoint_next := false
 static var _resume_run_stats_next: Dictionary = {}
 
@@ -134,6 +137,10 @@ func _ready() -> void:
 	impact_effects = ImpactEffectManagerScript.new()
 	impact_effects.name = "ImpactEffects"
 	effects.add_child(impact_effects)
+	tutorial_director = TutorialDirectorScript.new()
+	tutorial_director.name = "TutorialDirector"
+	add_child(tutorial_director)
+	tutorial_director.configure(hud)
 	player.add_to_group("player")
 	player.volley_requested.connect(_spawn_player_volley)
 	player.health_changed.connect(hud.set_health)
@@ -159,12 +166,18 @@ func _ready() -> void:
 	player.died.connect(_on_player_died)
 	hud.restart_requested.connect(_restart_scene)
 	hud.quit_requested.connect(_on_quit_requested)
+	hud.menu_requested.connect(_on_menu_requested)
+	hud.map_select_requested.connect(_on_map_select_requested)
 	hud.audio_adjust_requested.connect(_on_audio_adjust_requested)
 	hud.audio_mute_requested.connect(_on_audio_mute_requested)
 	hud.ui_cue_requested.connect(_on_ui_cue_requested)
 	hud.pause_changed.connect(_on_pause_changed)
 	sfx.mix_changed.connect(hud.set_audio_mix)
 	hud.set_audio_mix(sfx.get_mix_snapshot())
+	_apply_experience_settings()
+	var settings := get_node_or_null("/root/SettingsManager")
+	if settings != null:
+		settings.setting_changed.connect(_on_setting_changed)
 	boss.shot_requested.connect(_spawn_projectile.bind(&"boss"))
 	boss.hazard_requested.connect(_spawn_hazard.bind(&"boss"))
 	boss.summon_requested.connect(_on_boss_summon_requested)
@@ -189,6 +202,25 @@ func _ready() -> void:
 		call_deferred("_restore_boss_checkpoint")
 
 
+func begin_product_intro(map_name: String, objective: String, countdown: float = 3.0) -> void:
+	_product_intro_token += 1
+	var token := _product_intro_token
+	player.cancel_transient_actions()
+	player.controls_enabled = false
+	hud.show_banner(map_name, Color(0.35, 0.9, 0.82, 1.0), true)
+	hud.show_objective_update(objective, maxf(countdown, 1.0))
+	var remaining := maxi(int(ceil(countdown)), 1)
+	while remaining > 0 and token == _product_intro_token:
+		hud.show_banner("DEPLOYMENT IN %d" % remaining, Color(1.0, 0.82, 0.34, 1.0), true)
+		await get_tree().create_timer(1.0, false).timeout
+		remaining -= 1
+	if token != _product_intro_token:
+		return
+	hud.show_banner("GO!", Color(0.38, 1.0, 0.68, 1.0), false, 0.45)
+	if run_state not in ["dead", "complete"]:
+		player.controls_enabled = true
+
+
 func _process(_delta: float) -> void:
 	if run_state not in ["dead", "complete"] and not get_tree().paused:
 		_run_elapsed += _delta
@@ -196,7 +228,6 @@ func _process(_delta: float) -> void:
 	var attacking_count := 0
 	if run_state == "combat":
 		_update_mission_flow(_delta)
-		_update_ability_tutorials()
 	for enemy in enemies.get_children():
 		if bool(enemy.get("alive")) and bool(enemy.get("active")):
 			active_count += 1
@@ -364,6 +395,8 @@ func _update_ability_tutorials() -> void:
 
 func _on_player_roll_started(_position: Vector2, _direction: int) -> void:
 	sfx.play_cue(&"roll")
+	if tutorial_director != null:
+		tutorial_director.notify_action(&"roll")
 	if _active_ability_tutorial == &"roll":
 		_active_ability_tutorial = &""
 		hud.hide_objective()
@@ -446,6 +479,8 @@ func _spawn_player_grenade(origin: Vector2, initial_velocity: Vector2, charge: f
 
 
 func _on_player_grenade_exploded(center: Vector2, radius: float, damage: int, knockback: float) -> void:
+	if tutorial_director != null:
+		tutorial_director.notify_action(&"grenade")
 	if _active_ability_tutorial == &"grenade":
 		_active_ability_tutorial = &""
 		hud.hide_objective()
@@ -587,6 +622,8 @@ func _on_projectile_impact_detailed(hit_position: Vector2, color: Color, strengt
 		damage_numbers.show_result(target, hit_position + Vector2(0, -10), details)
 	if telemetry != null and team == &"player" and can_damage:
 		telemetry.record_hit(weapon_id, int(details.get("applied_damage", 0)), feedback, critical)
+	if team == &"player" and can_damage and critical and tutorial_director != null:
+		tutorial_director.notify_action(&"headshot")
 	if team == &"player" and can_damage:
 		_run_hits += 1
 	var direction: Vector2 = details.get("direction", Vector2.RIGHT)
@@ -1037,6 +1074,7 @@ func _on_shake_scale_changed(scale: float) -> void:
 
 func _on_audio_adjust_requested(bus_name: StringName, delta_steps: int) -> void:
 	sfx.adjust_bus_step(bus_name, delta_steps)
+	_store_audio_settings()
 
 
 func _calculate_mission_rank(elapsed: float, accuracy: int, damage_events: int) -> String:
@@ -1051,10 +1089,74 @@ func _calculate_mission_rank(elapsed: float, accuracy: int, damage_events: int) 
 
 func _on_audio_mute_requested(bus_name: StringName) -> void:
 	sfx.toggle_bus_mute(bus_name)
+	_store_audio_settings()
+
+
+func _store_audio_settings() -> void:
+	var settings := get_node_or_null("/root/SettingsManager")
+	if settings == null:
+		return
+	var keys := {&"Master": &"master", &"Music": &"music", &"SFX": &"sfx", &"UI": &"ui"}
+	var snapshot: Dictionary = sfx.get_mix_snapshot()
+	for bus_name in keys:
+		if not snapshot.has(bus_name):
+			continue
+		var key: StringName = keys[bus_name]
+		var data: Dictionary = snapshot[bus_name]
+		settings.call("set_value", &"audio", key, int(data.get("percent", 100)), false)
+		settings.call("set_value", &"audio", StringName("%s_muted" % key), bool(data.get("muted", false)), false)
+	settings.call("save_settings")
+
+
+func _on_setting_changed(section: StringName, _key: StringName, _value: Variant) -> void:
+	if section == &"experience":
+		_apply_experience_settings()
+	elif section == &"audio":
+		var settings := get_node_or_null("/root/SettingsManager")
+		if settings != null:
+			var keys := {&"Master": &"master", &"Music": &"music", &"SFX": &"sfx", &"UI": &"ui"}
+			for bus_name in keys:
+				var key: StringName = keys[bus_name]
+				sfx.set_bus_level(bus_name, int(settings.call("get_value", &"audio", key, 100)))
+			hud.set_audio_mix(sfx.get_mix_snapshot())
+
+
+func _apply_experience_settings() -> void:
+	var settings := get_node_or_null("/root/SettingsManager")
+	if settings == null:
+		return
+	combat_feedback.shake_scale = float(settings.call("get_value", &"experience", &"camera_shake", 100)) / 100.0
+	damage_numbers.display_enabled = bool(settings.call("get_value", &"experience", &"damage_numbers", true))
+	impact_effects.flash_scale = float(settings.call("get_value", &"experience", &"screen_flash", 100)) / 100.0
+	var show_hints := bool(settings.call("get_value", &"experience", &"show_control_hints", true))
+	hud.controls_auto_hide_enabled = show_hints
+	if not show_hints:
+		hud.hide_controls(true)
 
 
 func _on_quit_requested() -> void:
-	get_tree().quit()
+	_on_menu_requested()
+
+
+func _on_menu_requested() -> void:
+	_product_intro_token += 1
+	get_tree().paused = false
+	_change_product_scene("res://scenes/menu/mode_select.tscn")
+
+
+func _on_map_select_requested() -> void:
+	_product_intro_token += 1
+	get_tree().paused = false
+	_change_product_scene("res://scenes/menu/mode_select.tscn", {"show_map_select": true})
+
+
+func _change_product_scene(scene_path: String, context: Dictionary = {}) -> void:
+	var flow := get_node_or_null("/root/SceneFlow")
+	if flow != null and flow.has_method("change_scene"):
+		flow.call("change_scene", scene_path, context)
+	else:
+		get_tree().paused = false
+		get_tree().change_scene_to_file(scene_path)
 
 
 func _on_ui_cue_requested(cue: StringName) -> void:

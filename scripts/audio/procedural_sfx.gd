@@ -20,6 +20,7 @@ const DEFAULT_LEVELS := {
 	&"Master": 100,
 	&"Music": 72,
 	&"SFX": 86,
+	&"UI": 80,
 }
 const LEGACY_ALIASES := {
 	&"shot": &"rifle",
@@ -138,18 +139,33 @@ var _semantic_duck_tween: Tween
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	if _session_levels.is_empty():
+	var first_session_mix := _session_levels.is_empty()
+	if first_session_mix:
 		_session_levels = DEFAULT_LEVELS.duplicate(true)
 	if _session_mutes.is_empty():
 		for bus_name in DEFAULT_LEVELS:
 			_session_mutes[bus_name] = false
 	_bus_levels = _session_levels.duplicate(true)
 	_ensure_audio_buses()
+	if first_session_mix:
+		_sync_persistent_mix()
 	_build_streams()
 	_build_voice_pool()
 	_build_music_players()
 	_apply_session_mix()
 	play_music(&"level", 0.0)
+
+
+func _sync_persistent_mix() -> void:
+	var settings := get_node_or_null("/root/SettingsManager")
+	if settings == null:
+		return
+	var keys := {&"Master": &"master", &"Music": &"music", &"SFX": &"sfx", &"UI": &"ui"}
+	for bus_name in keys:
+		var key: StringName = keys[bus_name]
+		_session_levels[bus_name] = int(settings.call("get_value", &"audio", key, DEFAULT_LEVELS[bus_name]))
+		_session_mutes[bus_name] = bool(settings.call("get_value", &"audio", StringName("%s_muted" % key), false))
+	_bus_levels = _session_levels.duplicate(true)
 
 
 func _process(_delta: float) -> void:
